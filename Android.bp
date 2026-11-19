@@ -935,7 +935,7 @@ rust_defaults {
     ],
 }
 
-rust_library_rlib {
+rust_library {
     name: "libbssl_sys",
     defaults: ["libbssl_sys_defaults"],
     min_sdk_version: "29",
@@ -1047,6 +1047,175 @@ rust_test {
     name: "libbssl_crypto_test",
     defaults: ["libbssl_crypto_defaults"],
     crate_name: "bssl_crypto_test",
+    test_suites: ["general-tests"],
+    auto_gen_config: true,
+}
+
+// High-level Rust X.509 bindings `bssl-x509`
+
+rust_defaults {
+    name: "libbssl_x509_defaults",
+    visibility: ["//visibility:public"],
+    edition: "2024",
+    features: [
+        "default",
+        "std",
+    ],
+    crate_root: "src/rust/bssl-x509/src/lib.rs",
+    srcs: ["src/rust/bssl-x509/src/**/*.rs"],
+    rustlibs: [
+        "libbitflags",
+        "libbssl_crypto",
+        "libbssl_sys",
+    ],
+}
+
+rust_library {
+    name: "libbssl_x509",
+    defaults: ["libbssl_x509_defaults"],
+    crate_name: "bssl_x509",
+    host_supported: true,
+    vendor_available: true,
+    product_available: true,
+    min_sdk_version: "29",
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.bettertogether",
+        "com.android.compos",
+        "com.android.virt",
+    ],
+}
+
+rust_test {
+    name: "libbssl_x509_test",
+    defaults: ["libbssl_x509_defaults"],
+    crate_name: "bssl_x509_test",
+    srcs: ["src/rust/bssl-x509/src/tests/*"],
+    host_supported: true,
+    test_suites: ["general-tests"],
+    auto_gen_config: true,
+}
+
+// High-level Rust TLS bindings `bssl-tls`
+
+rust_defaults {
+    name: "libbssl_tls_defaults",
+    visibility: ["//visibility:public"],
+    edition: "2024",
+    features: [
+        "default",
+        "libc",
+        "std",
+    ],
+    crate_root: "src/rust/bssl-tls/src/lib.rs",
+    srcs: ["src/rust/bssl-tls/src/**/*.rs"],
+    rustlibs: [
+        "libbitflags",
+        "libbssl_crypto",
+        "libbssl_sys",
+        "libbssl_x509",
+        "liblibc",
+        "libonce_cell",
+    ],
+}
+
+rust_library {
+    name: "libbssl_tls",
+    defaults: ["libbssl_tls_defaults"],
+    crate_name: "bssl_tls",
+    host_supported: true,
+    vendor_available: true,
+    product_available: true,
+    min_sdk_version: "29",
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.bettertogether",
+        "com.android.compos",
+        "com.android.virt",
+    ],
+}
+
+rust_test {
+    name: "libbssl_tls_test",
+    defaults: ["libbssl_tls_defaults"],
+    crate_name: "bssl_tls_test",
+    srcs: ["src/rust/test-data/*"],
+    host_supported: true,
+    rustlibs: ["libfutures"],
+    test_suites: ["general-tests"],
+    auto_gen_config: true,
+}
+
+// Async Tokio integration `bssl-tls-tokio`
+
+rust_defaults {
+    name: "libbssl_tls_tokio_defaults",
+    visibility: ["//visibility:public"],
+    edition: "2024",
+    features: ["hyper"],
+    crate_root: "src/rust/bssl-tls-tokio/src/lib.rs",
+    srcs: ["src/rust/bssl-tls-tokio/src/**/*.rs"],
+    rustlibs: [
+        "libbssl_tls",
+        "libhyper",
+        "liblibc",
+        "libtokio",
+        "libtower",
+    ],
+}
+
+rust_library {
+    name: "libbssl_tls_tokio",
+    defaults: ["libbssl_tls_tokio_defaults"],
+    crate_name: "bssl_tls_tokio",
+    host_supported: true,
+    vendor_available: true,
+    product_available: true,
+    min_sdk_version: "29",
+    apex_available: [
+        "//apex_available:platform",
+        "com.android.bettertogether",
+        "com.android.compos",
+        "com.android.virt",
+    ],
+}
+
+rust_test {
+    name: "libbssl_tls_tokio_test",
+    defaults: ["libbssl_tls_tokio_defaults"],
+    crate_name: "bssl_tls_tokio_test",
+    srcs: ["src/rust/test-data/*"],
+    host_supported: true,
+    rustlibs: [
+        "libbssl_x509",
+        "libfutures",
+        "libhyper_util",
+    ],
+    test_suites: ["general-tests"],
+    auto_gen_config: true,
+}
+
+rust_test {
+    name: "libbssl_tls_tokio_hyper_test",
+    crate_name: "bssl_tls_tokio_hyper_test",
+    edition: "2024",
+    features: ["hyper"],
+    crate_root: "src/rust/bssl-tls-tokio/tests/hyper.rs",
+    srcs: [
+        "src/rust/bssl-tls-tokio/tests/hyper.rs",
+        "src/rust/test-data/*",
+    ],
+    host_supported: true,
+    rustlibs: [
+        "libbssl_tls",
+        "libbssl_tls_tokio",
+        "libbssl_x509",
+        "libfutures",
+        "libhyper",
+        "libhyper_util",
+        "libtokio",
+        "libtower",
+    ],
     test_suites: ["general-tests"],
     auto_gen_config: true,
 }
