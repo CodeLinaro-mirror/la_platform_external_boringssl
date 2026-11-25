@@ -3,8 +3,8 @@
 ## Automated updates
 
 Routine updates from upstream `main` are imported into `src/` via Copybara,
-which updates `NOTICE`, `BORINGSSL_REVISION`, and `METADATA` and uploads a
-Gerrit change for review.
+which updates `NOTICE` and `METADATA` and uploads a Gerrit change for
+review.
 
 Soong source lists in `sources.bp` use filegroup globs validated against
 `src/gen/sources.json` by `boringssl_sources_test` in presubmit, and
