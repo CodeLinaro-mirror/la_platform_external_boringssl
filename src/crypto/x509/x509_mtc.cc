@@ -144,6 +144,29 @@ bool DigestUpdateNextASN1Element(EVP_MD_CTX *ctx, CBS *cbs) {
   return EVP_DigestUpdate(ctx, CBS_data(&element), CBS_len(&element));
 }
 
+// CheckMTCLogEntryExtensions returns whether `extensions` is a well-formed list
+// of MTCLogEntryExtension structures, sorted in strictly ascending order by
+// extension type (see section 5.2.1). No extension types are currently
+// recognized, so the contents are otherwise ignored (see section 12.5).
+bool CheckMTCLogEntryExtensions(CBS extensions) {
+  std::optional<uint16_t> prev_type;
+  while (CBS_len(&extensions) > 0) {
+    uint16_t type;
+    CBS data;
+    if (!CBS_get_u16(&extensions, &type) ||
+        !CBS_get_u16_length_prefixed(&extensions, &data)) {
+      OPENSSL_PUT_ERROR(X509, X509_R_INVALID_MTC_PROOF);
+      return false;
+    }
+    if (prev_type.has_value() && *prev_type >= type) {
+      OPENSSL_PUT_ERROR(X509, X509_R_INVALID_MTC_PROOF);
+      return false;
+    }
+    prev_type = type;
+  }
+  return true;
+}
+
 // MTCCACosigner represents a Merkle Tree CA and its corresponding CA cosigner
 // (see draft-ietf-plants-merkle-tree-certs, section 5.5).
 // Only id-pe-mtcCertificationAuthority-SHA256 is supported.
@@ -157,12 +180,17 @@ class MTCCACosigner {
   // its MTCCertificationAuthority extension. `pkey` is the public key
   // previously parsed from `x509`. Returns true if successfully initialized an
   // MTCCACosigner representing a valid MTC CA, or false on error.
-  bool Init(const X509 *x509, const EVP_PKEY *pkey) {
+  bool Init(const X509_STORE_CTX *ctx, const X509 *x509, const EVP_PKEY *pkey) {
     // Get and parse the MTCCertificationAuthority extension (see section 5.5).
     int ext_index =
         X509_get_ext_by_NID(x509, NID_pe_mtcCertificationAuthority_SHA256, -1);
     const X509_EXTENSION *ext = X509_get_ext(x509, ext_index);
-    if (ext == nullptr || !X509_EXTENSION_get_critical(ext)) {
+    if (ext == nullptr || !X509_EXTENSION_get_critical(ext) ||
+        // Check for duplicate MTC CA extensions.
+        // TODO(crbug.com/42290240): If the parser is tightened to check for
+        // duplicate extensions earlier, this check can be removed.
+        X509_get_ext_by_NID(x509, NID_pe_mtcCertificationAuthority_SHA256,
+                            ext_index) >= 0) {
       OPENSSL_PUT_ERROR(X509, X509_R_INVALID_MTC_CA);
       return false;
     }
@@ -177,6 +205,10 @@ class MTCCACosigner {
         !CBS_get_asn1_uint64(&seq, &max_serial_) ||            //
         CBS_len(&seq) != 0) {
       OPENSSL_PUT_ERROR(ASN1, ASN1_R_DECODE_ERROR);
+      return false;
+    }
+    if (!x509_sig_nid_allowed(ctx, OBJ_obj2nid(cosign_sigalg_->algorithm))) {
+      OPENSSL_PUT_ERROR(X509, X509_R_INVALID_MTC_CA);
       return false;
     }
     if (!is_mtc_serial_valid(min_serial_) ||
@@ -395,10 +427,10 @@ bool x509_evaluate_mtc_subtree_inclusion_proof(
   return true;
 }
 
-int x509_verify_mtc(const X509 *x509, const EVP_PKEY *pkey,
-                    const X509 *issuer) {
+int x509_verify_mtc(const X509_STORE_CTX *ctx, const X509 *x509,
+                    const EVP_PKEY *pkey, const X509 *issuer) {
   MTCCACosigner issuer_mtc_ca;
-  if (!issuer_mtc_ca.Init(issuer, pkey)) {
+  if (!issuer_mtc_ca.Init(ctx, issuer, pkey)) {
     return 0;
   }
 
@@ -431,6 +463,9 @@ int x509_verify_mtc(const X509 *x509, const EVP_PKEY *pkey,
       !CBS_get_u24_length_prefixed(&mtc_proof, &signatures) ||
       CBS_len(&mtc_proof) != 0) {
     OPENSSL_PUT_ERROR(ASN1, ASN1_R_DECODE_ERROR);
+    return 0;
+  }
+  if (!CheckMTCLogEntryExtensions(extensions)) {
     return 0;
   }
 
