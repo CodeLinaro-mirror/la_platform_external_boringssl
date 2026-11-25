@@ -33,7 +33,7 @@ struct TestData {
   int expected;
 };
 
-TestData kX509CmpTests[] = {
+static TestData kX509CmpTests[] = {
     {
         "20170217180154Z",
         V_ASN1_GENERALIZEDTIME,
@@ -317,7 +317,7 @@ struct NonStandardTestData {
   int expected_nonstandard;
 };
 
-NonStandardTestData kX509CmpNonStandardTests[] = {
+static NonStandardTestData kX509CmpNonStandardTests[] = {
     {
         // Timezone offset, UTCTime.
         "170217180154+0100",

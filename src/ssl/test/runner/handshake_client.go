@@ -1294,9 +1294,10 @@ func (hs *clientHandshakeState) doTLS13Handshake(msg any) error {
 			}
 
 			hs.writeServerHash(certReq.marshal())
+
 			credential = c.config.Credential
-			if err := hs.handleCertificateRequest(certReq, credential); err != nil {
-				return err
+			if credential != nil && c.config.Bugs.IgnorePeerSignatureAlgorithmPreferences {
+				certReq.signatureAlgorithms = credential.signatureAlgorithms()
 			}
 
 			msg, err = c.readHandshake()
@@ -1775,9 +1776,10 @@ func (hs *clientHandshakeState) doFullHandshake() error {
 	if ok {
 		certRequested = true
 		hs.writeServerHash(certReq.marshal())
+
 		credential = c.config.Credential
-		if err := hs.handleCertificateRequest(certReq, credential); err != nil {
-			return err
+		if credential != nil && c.config.Bugs.IgnorePeerSignatureAlgorithmPreferences {
+			certReq.signatureAlgorithms = credential.signatureAlgorithms()
 		}
 
 		msg, err = c.readHandshake()
@@ -2659,17 +2661,4 @@ func (hs *clientHandshakeState) generatePSKBinders(hello *clientHelloMsg, firstC
 
 	// Clear the cached encoding.
 	hello.raw = nil
-}
-
-func (hs *clientHandshakeState) handleCertificateRequest(certReq *certificateRequestMsg, credential *Credential) error {
-	c := hs.c
-	if expected := c.config.Bugs.ExpectPeerSignatureAlgorithmPreferences; expected != nil {
-		if !slices.Equal(expected, certReq.signatureAlgorithms) {
-			return fmt.Errorf("tls: server offered signature algorithms %v, but expected %v", certReq.signatureAlgorithms, expected)
-		}
-	}
-	if credential != nil && c.config.Bugs.IgnorePeerSignatureAlgorithmPreferences {
-		certReq.signatureAlgorithms = credential.signatureAlgorithms()
-	}
-	return nil
 }

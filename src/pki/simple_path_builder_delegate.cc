@@ -72,8 +72,8 @@ SimplePathBuilderDelegate::GetMTCCosigner(Span<const uint8_t> cosigner_id) {
   return std::nullopt;
 }
 
-bool SimplePathBuilderDelegate::IsMTCCosignatureVerificationResultAcceptable(
-    const ParsedCertificate& mtc_ca_cert,
+bool SimplePathBuilderDelegate::IsCosignatureVerificationResultAcceptable(
+    const MTCAnchor *mtc_anchor,
     std::vector<std::vector<uint8_t>> valid_additional_cosigners) {
   return true;
 }
@@ -100,6 +100,7 @@ bool SimplePathBuilderDelegate::IsSignatureAlgorithmAcceptable(
     case SignatureAlgorithm::kRsaPssSha256:
     case SignatureAlgorithm::kRsaPssSha384:
     case SignatureAlgorithm::kRsaPssSha512:
+    case SignatureAlgorithm::kMtcProofDraftPlants04:
     case SignatureAlgorithm::kMtcProof:
     case SignatureAlgorithm::kMldsa44:
     case SignatureAlgorithm::kMldsa65:

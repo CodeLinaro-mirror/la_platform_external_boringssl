@@ -141,21 +141,20 @@ struct evp_hpke_aead_st {
   const EVP_AEAD *(*aead_func)();
 };
 
-namespace {
 
 // Low-level labeled KDF functions.
 
-const char kHpkeVersionId[] = "HPKE-v1";
+static const char kHpkeVersionId[] = "HPKE-v1";
 
-int add_label_string(CBB *cbb, const char *label) {
+static int add_label_string(CBB *cbb, const char *label) {
   return CBB_add_bytes(cbb, (const uint8_t *)label, strlen(label));
 }
 
-int hpke_labeled_extract(const EVP_MD *hkdf_md, uint8_t *out_key,
-                         size_t *out_len, const uint8_t *salt, size_t salt_len,
-                         const uint8_t *suite_id, size_t suite_id_len,
-                         const char *label, const uint8_t *ikm,
-                         size_t ikm_len) {
+static int hpke_labeled_extract(const EVP_MD *hkdf_md, uint8_t *out_key,
+                                size_t *out_len, const uint8_t *salt,
+                                size_t salt_len, const uint8_t *suite_id,
+                                size_t suite_id_len, const char *label,
+                                const uint8_t *ikm, size_t ikm_len) {
   // labeledIKM = concat("HPKE-v1", suite_id, label, IKM)
   CBB labeled_ikm;
   int ok = CBB_init(&labeled_ikm, 0) &&
@@ -169,11 +168,11 @@ int hpke_labeled_extract(const EVP_MD *hkdf_md, uint8_t *out_key,
   return ok;
 }
 
-int hpke_labeled_expand(const EVP_MD *hkdf_md, uint8_t *out_key, size_t out_len,
-                        const uint8_t *prk, size_t prk_len,
-                        const uint8_t *suite_id, size_t suite_id_len,
-                        const char *label, const uint8_t *info,
-                        size_t info_len) {
+static int hpke_labeled_expand(const EVP_MD *hkdf_md, uint8_t *out_key,
+                               size_t out_len, const uint8_t *prk,
+                               size_t prk_len, const uint8_t *suite_id,
+                               size_t suite_id_len, const char *label,
+                               const uint8_t *info, size_t info_len) {
   // labeledInfo = concat(I2OSP(L, 2), "HPKE-v1", suite_id, label, info)
   CBB labeled_info;
   int ok = CBB_init(&labeled_info, 0) &&  //
@@ -188,16 +187,17 @@ int hpke_labeled_expand(const EVP_MD *hkdf_md, uint8_t *out_key, size_t out_len,
   return ok;
 }
 
-void absorb_u16(BORINGSSL_keccak_st *ctx, uint16_t n) {
+static void absorb_u16(BORINGSSL_keccak_st *ctx, uint16_t n) {
   uint8_t bytes[2];
   CRYPTO_store_u16_be(bytes, n);
   BORINGSSL_keccak_absorb(ctx, bytes, sizeof(bytes));
 }
 
-void hpke_shake256_labeled_derive(Span<uint8_t> out, Span<const uint8_t> ikm,
-                                  Span<const uint8_t> suite_id,
-                                  std::string_view label,
-                                  Span<const uint8_t> context) {
+static void hpke_shake256_labeled_derive(Span<uint8_t> out,
+                                         Span<const uint8_t> ikm,
+                                         Span<const uint8_t> suite_id,
+                                         std::string_view label,
+                                         Span<const uint8_t> context) {
   // https://www.ietf.org/archive/id/draft-ietf-hpke-hpke-03.html#name-labeled-derivation-function
   // https://www.ietf.org/archive/id/draft-ietf-hpke-pq-04.html#name-single-stage-kdfs
   BORINGSSL_keccak_st ctx;
@@ -219,7 +219,7 @@ void hpke_shake256_labeled_derive(Span<uint8_t> out, Span<const uint8_t> ikm,
 
 // KEM implementations.
 
-std::array<uint8_t, 5> hpke_kem_suite_id(uint16_t kem_id) {
+static std::array<uint8_t, 5> hpke_kem_suite_id(uint16_t kem_id) {
   // concat("KEM", I2OSP(kem_id, 2))
   return {'K', 'E', 'M', static_cast<uint8_t>(kem_id >> 8),
           static_cast<uint8_t>(kem_id)};
@@ -227,11 +227,11 @@ std::array<uint8_t, 5> hpke_kem_suite_id(uint16_t kem_id) {
 
 // dhkem_extract_and_expand implements the ExtractAndExpand operation in the
 // DHKEM construction. See section 4.1 of RFC 9180.
-int dhkem_extract_and_expand(uint16_t kem_id, const EVP_MD *hkdf_md,
-                             uint8_t *out_key, size_t out_len,
-                             const uint8_t *dh, size_t dh_len,
-                             const uint8_t *kem_context,
-                             size_t kem_context_len) {
+static int dhkem_extract_and_expand(uint16_t kem_id, const EVP_MD *hkdf_md,
+                                    uint8_t *out_key, size_t out_len,
+                                    const uint8_t *dh, size_t dh_len,
+                                    const uint8_t *kem_context,
+                                    size_t kem_context_len) {
   auto suite_id = hpke_kem_suite_id(kem_id);
   uint8_t prk[EVP_MAX_MD_SIZE];
   size_t prk_len;
@@ -243,8 +243,10 @@ int dhkem_extract_and_expand(uint16_t kem_id, const EVP_MD *hkdf_md,
                              kem_context, kem_context_len);
 }
 
-bool dhkem_dh(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
-              const EVP_PKEY *key, const EVP_PKEY *peer) {
+namespace {
+
+static bool dhkem_dh(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
+                     const EVP_PKEY *key, const EVP_PKEY *peer) {
   assert(out.size() == dhkem->dh_shared_key_len);
   UniquePtr<EVP_PKEY_CTX> pkctx(EVP_PKEY_CTX_new(key, nullptr));
   if (pkctx == nullptr) {
@@ -257,8 +259,8 @@ bool dhkem_dh(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
          out_len == dhkem->dh_shared_key_len;
 }
 
-bool dhkem_serialize_public_key(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
-                                const EVP_PKEY *key) {
+static bool dhkem_serialize_public_key(const EVP_KEM_DHKEM *dhkem,
+                                       Span<uint8_t> out, const EVP_PKEY *key) {
   if (out.size() != dhkem->key_method->public_key_len) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_BUFFER_SIZE);
     return false;
@@ -272,8 +274,9 @@ bool dhkem_serialize_public_key(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
   return true;
 }
 
-bool dhkem_serialize_public_keys(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
-                                 const EVP_PKEY *key1, const EVP_PKEY *key2) {
+static bool dhkem_serialize_public_keys(const EVP_KEM_DHKEM *dhkem,
+                                        Span<uint8_t> out, const EVP_PKEY *key1,
+                                        const EVP_PKEY *key2) {
   const size_t public_len = dhkem->key_method->public_key_len;
   if (out.size() != 2 * dhkem->key_method->public_key_len) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_BUFFER_SIZE);
@@ -283,9 +286,10 @@ bool dhkem_serialize_public_keys(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
          dhkem_serialize_public_key(dhkem, out.subspan(public_len), key2);
 }
 
-bool dhkem_serialize_public_keys(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
-                                 const EVP_PKEY *key1, const EVP_PKEY *key2,
-                                 const EVP_PKEY *key3) {
+static bool dhkem_serialize_public_keys(const EVP_KEM_DHKEM *dhkem,
+                                        Span<uint8_t> out, const EVP_PKEY *key1,
+                                        const EVP_PKEY *key2,
+                                        const EVP_PKEY *key3) {
   const size_t public_len = dhkem->key_method->public_key_len;
   if (out.size() != 3 * public_len) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_BUFFER_SIZE);
@@ -296,11 +300,11 @@ bool dhkem_serialize_public_keys(const EVP_KEM_DHKEM *dhkem, Span<uint8_t> out,
                                      key3);
 }
 
-int dhkem_encap_with_ephemeral_key(const EVP_KEM_DHKEM *dhkem,
-                                   Span<uint8_t> out_ciphertext,
-                                   Span<uint8_t> out_secret,
-                                   const EVP_PKEY *peer_key,
-                                   const EVP_PKEY *ephemeral_key) {
+static int dhkem_encap_with_ephemeral_key(const EVP_KEM_DHKEM *dhkem,
+                                          Span<uint8_t> out_ciphertext,
+                                          Span<uint8_t> out_secret,
+                                          const EVP_PKEY *peer_key,
+                                          const EVP_PKEY *ephemeral_key) {
   const size_t public_len = dhkem->key_method->public_key_len;
   if (out_ciphertext.size() != public_len) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_CIPHERTEXT_LENGTH);
@@ -333,8 +337,8 @@ int dhkem_encap_with_ephemeral_key(const EVP_KEM_DHKEM *dhkem,
                                   kem_context.data(), kem_context.size());
 }
 
-int dhkem_encap(const EVP_KEM *kem, Span<uint8_t> out_ciphertext,
-                Span<uint8_t> out_secret, const EVP_PKEY *peer_key) {
+static int dhkem_encap(const EVP_KEM *kem, Span<uint8_t> out_ciphertext,
+                       Span<uint8_t> out_secret, const EVP_PKEY *peer_key) {
   const auto *dhkem = static_cast<const EVP_KEM_DHKEM *>(kem);
   UniquePtr<EVP_PKEY> ephemeral_key(
       EVP_PKEY_generate_from_alg(dhkem->key_method->alg_func()));
@@ -345,11 +349,11 @@ int dhkem_encap(const EVP_KEM *kem, Span<uint8_t> out_ciphertext,
                                         peer_key, ephemeral_key.get());
 }
 
-int dhkem_encap_external_entropy(const EVP_KEM *kem,
-                                 Span<uint8_t> out_ciphertext,
-                                 Span<uint8_t> out_secret,
-                                 const EVP_PKEY *peer_key,
-                                 Span<const uint8_t> entropy) {
+static int dhkem_encap_external_entropy(const EVP_KEM *kem,
+                                        Span<uint8_t> out_ciphertext,
+                                        Span<uint8_t> out_secret,
+                                        const EVP_PKEY *peer_key,
+                                        Span<const uint8_t> entropy) {
   const auto *dhkem = static_cast<const EVP_KEM_DHKEM *>(kem);
   UniquePtr<EVP_PKEY> ephemeral_key(dhkem->key_from_encap_entropy(
       dhkem->key_method->alg_func(), entropy.data(), entropy.size()));
@@ -360,8 +364,8 @@ int dhkem_encap_external_entropy(const EVP_KEM *kem,
                                         peer_key, ephemeral_key.get());
 }
 
-int dhkem_decap(const EVP_KEM *kem, Span<uint8_t> out_secret,
-                Span<const uint8_t> ciphertext, const EVP_PKEY *key) {
+static int dhkem_decap(const EVP_KEM *kem, Span<uint8_t> out_secret,
+                       Span<const uint8_t> ciphertext, const EVP_PKEY *key) {
   const auto *dhkem = static_cast<const EVP_KEM_DHKEM *>(kem);
   const size_t public_len = dhkem->key_method->public_key_len;
   if (ciphertext.size() != public_len) {
@@ -400,12 +404,12 @@ int dhkem_decap(const EVP_KEM *kem, Span<uint8_t> out_secret,
                                   kem_context.data(), kem_context.size());
 }
 
-int dhkem_auth_encap_with_ephemeral_key(const EVP_KEM_DHKEM *dhkem,
-                                        Span<uint8_t> out_ciphertext,
-                                        Span<uint8_t> out_secret,
-                                        const EVP_PKEY *peer_key,
-                                        const EVP_PKEY *auth_key,
-                                        const EVP_PKEY *ephemeral_key) {
+static int dhkem_auth_encap_with_ephemeral_key(const EVP_KEM_DHKEM *dhkem,
+                                               Span<uint8_t> out_ciphertext,
+                                               Span<uint8_t> out_secret,
+                                               const EVP_PKEY *peer_key,
+                                               const EVP_PKEY *auth_key,
+                                               const EVP_PKEY *ephemeral_key) {
   const size_t public_len = dhkem->key_method->public_key_len;
   if (out_ciphertext.size() != public_len) {
     OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_CIPHERTEXT_LENGTH);
@@ -442,9 +446,9 @@ int dhkem_auth_encap_with_ephemeral_key(const EVP_KEM_DHKEM *dhkem,
                                   kem_context.data(), kem_context.size());
 }
 
-int dhkem_auth_encap(const EVP_KEM *kem, Span<uint8_t> out_ciphertext,
-                     Span<uint8_t> out_secret, const EVP_PKEY *peer_key,
-                     const EVP_PKEY *auth_key) {
+static int dhkem_auth_encap(const EVP_KEM *kem, Span<uint8_t> out_ciphertext,
+                            Span<uint8_t> out_secret, const EVP_PKEY *peer_key,
+                            const EVP_PKEY *auth_key) {
   const auto *dhkem = static_cast<const EVP_KEM_DHKEM *>(kem);
   UniquePtr<EVP_PKEY> ephemeral_key(
       EVP_PKEY_generate_from_alg(dhkem->key_method->alg_func()));
@@ -456,12 +460,12 @@ int dhkem_auth_encap(const EVP_KEM *kem, Span<uint8_t> out_ciphertext,
                                              ephemeral_key.get());
 }
 
-int dhkem_auth_encap_external_entropy(const EVP_KEM *kem,
-                                      Span<uint8_t> out_ciphertext,
-                                      Span<uint8_t> out_secret,
-                                      const EVP_PKEY *peer_key,
-                                      const EVP_PKEY *auth_key,
-                                      Span<const uint8_t> entropy) {
+static int dhkem_auth_encap_external_entropy(const EVP_KEM *kem,
+                                             Span<uint8_t> out_ciphertext,
+                                             Span<uint8_t> out_secret,
+                                             const EVP_PKEY *peer_key,
+                                             const EVP_PKEY *auth_key,
+                                             Span<const uint8_t> entropy) {
   const auto *dhkem = static_cast<const EVP_KEM_DHKEM *>(kem);
   UniquePtr<EVP_PKEY> ephemeral_key(dhkem->key_from_encap_entropy(
       dhkem->key_method->alg_func(), entropy.data(), entropy.size()));
@@ -473,9 +477,9 @@ int dhkem_auth_encap_external_entropy(const EVP_KEM *kem,
                                              ephemeral_key.get());
 }
 
-int dhkem_auth_decap(const EVP_KEM *kem, Span<uint8_t> out_secret,
-                     Span<const uint8_t> ciphertext, const EVP_PKEY *key,
-                     const EVP_PKEY *auth_key) {
+static int dhkem_auth_decap(const EVP_KEM *kem, Span<uint8_t> out_secret,
+                            Span<const uint8_t> ciphertext, const EVP_PKEY *key,
+                            const EVP_PKEY *auth_key) {
   const auto *dhkem = static_cast<const EVP_KEM_DHKEM *>(kem);
   const size_t public_len = dhkem->key_method->public_key_len;
   if (ciphertext.size() != public_len) {
@@ -539,7 +543,7 @@ EVP_PKEY *x25519_derive_key_pair(const EVP_PKEY_ALG *alg, uint16_t kem_suite_id,
   return EVP_PKEY_from_raw_private_key(alg, sk, sizeof(sk));
 }
 
-constexpr HpkeKeyMethod kX25519KeyMethod = {
+static constexpr HpkeKeyMethod kX25519KeyMethod = {
     /*hpke_kem_id=*/EVP_HPKE_DHKEM_X25519_HKDF_SHA256,
     /*public_key_len=*/X25519_PUBLIC_VALUE_LEN,
     /*private_key_len=*/X25519_PRIVATE_KEY_LEN,
@@ -667,7 +671,7 @@ bool p256_check_key(const EVP_KEM *kem, const EVP_PKEY *key) {
                       /*ignored=*/nullptr) == 0;
 }
 
-constexpr HpkeKeyMethod kP256KeyMethod = {
+static constexpr HpkeKeyMethod kP256KeyMethod = {
     /*hpke_kem_id=*/EVP_HPKE_DHKEM_P256_HKDF_SHA256,
     /*public_key_len=*/kP256PublicValueLen,
     /*private_key_len=*/kP256PrivateKeyLen,
@@ -713,19 +717,16 @@ const EVP_HPKE_KEM *EVP_hpke_p256_hkdf_sha256() {
   return &kKEM;
 }
 
-namespace {
-
 template <size_t SEED_BYTES>
-EVP_PKEY *shake256_derive_key_pair_from_private_seed(const EVP_PKEY_ALG *alg,
-                                                     uint16_t kem_suite_id,
-                                                     Span<const uint8_t> ikm) {
+static EVP_PKEY *shake256_derive_key_pair_from_private_seed(
+    const EVP_PKEY_ALG *alg, uint16_t kem_suite_id, Span<const uint8_t> ikm) {
   uint8_t seed[SEED_BYTES];
   hpke_shake256_labeled_derive(seed, ikm, hpke_kem_suite_id(kem_suite_id),
                                "DeriveKeyPair", /*context=*/{});
   return EVP_PKEY_from_private_seed(alg, seed, sizeof(seed));
 }
 
-constexpr HpkeKeyMethod kXwingKeyMethod = {
+static constexpr HpkeKeyMethod kXwingKeyMethod = {
     /*hpke_kem_id=*/EVP_HPKE_XWING,
     /*public_key_len=*/XWING_PUBLIC_KEY_BYTES,
     /*private_key_len=*/XWING_PRIVATE_KEY_BYTES,
@@ -737,8 +738,6 @@ constexpr HpkeKeyMethod kXwingKeyMethod = {
     /*derive_key_pair=*/
     shake256_derive_key_pair_from_private_seed<XWING_PRIVATE_KEY_BYTES>,
 };
-
-}  // namespace
 
 const EVP_HPKE_KEM *EVP_hpke_xwing() {
   static constexpr EVP_HPKE_KEM kKEM = {
@@ -754,9 +753,7 @@ const EVP_HPKE_KEM *EVP_hpke_xwing() {
   return &kKEM;
 }
 
-namespace {
-
-constexpr HpkeKeyMethod kMlkem768KeyMethod = {
+static constexpr HpkeKeyMethod kMlkem768KeyMethod = {
     /*hpke_kem_id=*/EVP_HPKE_MLKEM768,
     /*public_key_len=*/MLKEM768_PUBLIC_KEY_BYTES,
     /*private_key_len=*/MLKEM_SEED_BYTES,
@@ -768,21 +765,6 @@ constexpr HpkeKeyMethod kMlkem768KeyMethod = {
     /*derive_key_pair=*/
     shake256_derive_key_pair_from_private_seed<MLKEM_SEED_BYTES>,
 };
-
-constexpr HpkeKeyMethod kMlkem1024KeyMethod = {
-    /*hpke_kem_id=*/EVP_HPKE_MLKEM1024,
-    /*public_key_len=*/MLKEM1024_PUBLIC_KEY_BYTES,
-    /*private_key_len=*/MLKEM_SEED_BYTES,
-    /*alg_func=*/&EVP_pkey_ml_kem_1024,
-    /*deserialize_private_key=*/&EVP_PKEY_from_private_seed,
-    /*serialize_private_key=*/&EVP_PKEY_get_private_seed,
-    /*deserialize_public_key=*/&EVP_PKEY_from_raw_public_key,
-    /*serialize_public_key=*/&EVP_PKEY_get_raw_public_key,
-    /*derive_key_pair=*/
-    shake256_derive_key_pair_from_private_seed<MLKEM_SEED_BYTES>,
-};
-
-}  // namespace
 
 const EVP_HPKE_KEM *EVP_hpke_mlkem768() {
   static constexpr EVP_HPKE_KEM kKEM = {
@@ -797,6 +779,19 @@ const EVP_HPKE_KEM *EVP_hpke_mlkem768() {
   };
   return &kKEM;
 }
+
+static constexpr HpkeKeyMethod kMlkem1024KeyMethod = {
+    /*hpke_kem_id=*/EVP_HPKE_MLKEM1024,
+    /*public_key_len=*/MLKEM1024_PUBLIC_KEY_BYTES,
+    /*private_key_len=*/MLKEM_SEED_BYTES,
+    /*alg_func=*/&EVP_pkey_ml_kem_1024,
+    /*deserialize_private_key=*/&EVP_PKEY_from_private_seed,
+    /*serialize_private_key=*/&EVP_PKEY_get_private_seed,
+    /*deserialize_public_key=*/&EVP_PKEY_from_raw_public_key,
+    /*serialize_public_key=*/&EVP_PKEY_get_raw_public_key,
+    /*derive_key_pair=*/
+    shake256_derive_key_pair_from_private_seed<MLKEM_SEED_BYTES>,
+};
 
 const EVP_HPKE_KEM *EVP_hpke_mlkem1024() {
   static constexpr EVP_HPKE_KEM kKEM = {
@@ -857,6 +852,8 @@ void EVP_HPKE_KEY_free(EVP_HPKE_KEY *key) {
 
 int EVP_HPKE_KEY_copy(EVP_HPKE_KEY *dst, const EVP_HPKE_KEY *src) {
   dst->kem = src->kem;
+  OPENSSL_memcpy(dst->private_key, src->private_key, sizeof(src->private_key));
+  OPENSSL_memcpy(dst->public_key, src->public_key, sizeof(src->public_key));
   dst->pkey = EVP_PKEY_dup_ref(src->pkey);
   return 1;
 }
@@ -981,12 +978,7 @@ const EVP_AEAD *EVP_HPKE_AEAD_aead(const EVP_HPKE_AEAD *aead) {
 
 // HPKE implementation.
 
-#define HPKE_MODE_BASE 0
-#define HPKE_MODE_AUTH 2
-
-namespace {
-
-std::array<uint8_t, 10> hpke_full_suite_id(const EVP_HPKE_CTX *ctx) {
+static std::array<uint8_t, 10> hpke_full_suite_id(const EVP_HPKE_CTX *ctx) {
   return {
       'H',
       'P',
@@ -1000,9 +992,14 @@ std::array<uint8_t, 10> hpke_full_suite_id(const EVP_HPKE_CTX *ctx) {
       static_cast<uint8_t>(ctx->aead->id),
   };
 }
-int hpke_key_schedule(EVP_HPKE_CTX *ctx, uint8_t mode,
-                      const uint8_t *shared_secret, size_t shared_secret_len,
-                      const uint8_t *info, size_t info_len) {
+
+#define HPKE_MODE_BASE 0
+#define HPKE_MODE_AUTH 2
+
+static int hpke_key_schedule(EVP_HPKE_CTX *ctx, uint8_t mode,
+                             const uint8_t *shared_secret,
+                             size_t shared_secret_len, const uint8_t *info,
+                             size_t info_len) {
   auto suite_id = hpke_full_suite_id(ctx);
 
   // psk_id_hash = LabeledExtract("", "psk_id_hash", psk_id)
@@ -1076,13 +1073,36 @@ int hpke_key_schedule(EVP_HPKE_CTX *ctx, uint8_t mode,
   return 1;
 }
 
-int hpke_setup_sender_impl(EVP_HPKE_CTX *ctx, uint8_t *out_enc,
-                           size_t *out_enc_len, size_t max_enc,
-                           const EVP_HPKE_KEM *kem, const EVP_HPKE_KDF *kdf,
-                           const EVP_HPKE_AEAD *aead,
-                           Span<const uint8_t> peer_public_key,
-                           Span<const uint8_t> info,
-                           std::optional<Span<const uint8_t>> entropy) {
+void EVP_HPKE_CTX_zero(EVP_HPKE_CTX *ctx) {
+  OPENSSL_memset(ctx, 0, sizeof(EVP_HPKE_CTX));
+  EVP_AEAD_CTX_zero(&ctx->aead_ctx);
+}
+
+void EVP_HPKE_CTX_cleanup(EVP_HPKE_CTX *ctx) {
+  EVP_AEAD_CTX_cleanup(&ctx->aead_ctx);
+}
+
+EVP_HPKE_CTX *EVP_HPKE_CTX_new() {
+  EVP_HPKE_CTX *ctx = New<EVP_HPKE_CTX>();
+  if (ctx == nullptr) {
+    return nullptr;
+  }
+  EVP_HPKE_CTX_zero(ctx);
+  return ctx;
+}
+
+void EVP_HPKE_CTX_free(EVP_HPKE_CTX *ctx) {
+  if (ctx != nullptr) {
+    EVP_HPKE_CTX_cleanup(ctx);
+    Delete(ctx);
+  }
+}
+
+static int hpke_setup_sender_impl(
+    EVP_HPKE_CTX *ctx, uint8_t *out_enc, size_t *out_enc_len, size_t max_enc,
+    const EVP_HPKE_KEM *kem, const EVP_HPKE_KDF *kdf, const EVP_HPKE_AEAD *aead,
+    Span<const uint8_t> peer_public_key, Span<const uint8_t> info,
+    std::optional<Span<const uint8_t>> entropy) {
   EVP_HPKE_CTX_zero(ctx);
   ctx->is_sender = 1;
   ctx->kem = kem;
@@ -1122,102 +1142,6 @@ int hpke_setup_sender_impl(EVP_HPKE_CTX *ctx, uint8_t *out_enc,
     return 0;
   }
   return 1;
-}
-
-int hpke_setup_auth_sender_impl(
-    EVP_HPKE_CTX *ctx, uint8_t *out_enc, size_t *out_enc_len, size_t max_enc,
-    const EVP_HPKE_KEY *key, const EVP_HPKE_KDF *kdf, const EVP_HPKE_AEAD *aead,
-    Span<const uint8_t> peer_public_key, Span<const uint8_t> info,
-    std::optional<Span<const uint8_t>> entropy) {
-  if (entropy.has_value() ? key->kem->auth_encap_external_entropy == nullptr
-                          : key->kem->auth_encap == nullptr) {
-    // Not all HPKE KEMs support AuthEncap.
-    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
-    return 0;
-  }
-
-  const EVP_KEM *kem = key->kem->evp_kem_func();
-  EVP_HPKE_CTX_zero(ctx);
-  ctx->is_sender = 1;
-  ctx->kem = key->kem;
-  ctx->kdf = kdf;
-  ctx->aead = aead;
-  if (max_enc < kem->ciphertext_len) {
-    OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_BUFFER_SIZE);
-    return 0;
-  }
-  UniquePtr<EVP_PKEY> peer_key(key->kem->key_method->deserialize_public_key(
-      key->kem->key_method->alg_func(), peer_public_key.data(),
-      peer_public_key.size()));
-  if (peer_key == nullptr) {
-    return 0;
-  }
-
-  InplaceVector<uint8_t, MAX_SHARED_SECRET_LEN> shared_secret;
-  if (!shared_secret.TryResizeForOverwrite(kem->secret_len)) {
-    OPENSSL_PUT_ERROR(EVP, ERR_R_INTERNAL_ERROR);
-    return 0;
-  }
-  Span<uint8_t> enc_span(out_enc, kem->ciphertext_len);
-  Span<uint8_t> secret_span(shared_secret);
-  int auth_encap_ok =
-      entropy.has_value()
-          ? key->kem->auth_encap_external_entropy(
-                kem, enc_span, secret_span, peer_key.get(), key->pkey, *entropy)
-          : key->kem->auth_encap(kem, enc_span, secret_span, peer_key.get(),
-                                 key->pkey);
-  if (!auth_encap_ok ||
-      !hpke_key_schedule(ctx, HPKE_MODE_AUTH, secret_span.data(),
-                         secret_span.size(), info.data(), info.size())) {
-    EVP_HPKE_CTX_cleanup(ctx);
-    return 0;
-  }
-  *out_enc_len = kem->ciphertext_len;
-  return 1;
-}
-
-void hpke_nonce(const EVP_HPKE_CTX *ctx, uint8_t *out_nonce, size_t nonce_len) {
-  assert(nonce_len >= 8);
-
-  // Write padded big-endian bytes of `ctx->seq` to `out_nonce`.
-  OPENSSL_memset(out_nonce, 0, nonce_len);
-  uint64_t seq_copy = ctx->seq;
-  for (size_t i = 0; i < 8; i++) {
-    out_nonce[nonce_len - i - 1] = seq_copy & 0xff;
-    seq_copy >>= 8;
-  }
-
-  // XOR the encoded sequence with the `ctx->base_nonce`.
-  for (size_t i = 0; i < nonce_len; i++) {
-    out_nonce[i] ^= ctx->base_nonce[i];
-  }
-}
-
-}  // namespace
-
-void EVP_HPKE_CTX_zero(EVP_HPKE_CTX *ctx) {
-  OPENSSL_memset(ctx, 0, sizeof(EVP_HPKE_CTX));
-  EVP_AEAD_CTX_zero(&ctx->aead_ctx);
-}
-
-void EVP_HPKE_CTX_cleanup(EVP_HPKE_CTX *ctx) {
-  EVP_AEAD_CTX_cleanup(&ctx->aead_ctx);
-}
-
-EVP_HPKE_CTX *EVP_HPKE_CTX_new() {
-  EVP_HPKE_CTX *ctx = New<EVP_HPKE_CTX>();
-  if (ctx == nullptr) {
-    return nullptr;
-  }
-  EVP_HPKE_CTX_zero(ctx);
-  return ctx;
-}
-
-void EVP_HPKE_CTX_free(EVP_HPKE_CTX *ctx) {
-  if (ctx != nullptr) {
-    EVP_HPKE_CTX_cleanup(ctx);
-    Delete(ctx);
-  }
 }
 
 
@@ -1291,6 +1215,58 @@ int EVP_HPKE_CTX_setup_recipient(EVP_HPKE_CTX *ctx, const EVP_HPKE_KEY *key,
              shared_secret.size(), info, info_len);
 }
 
+static int hpke_setup_auth_sender_impl(
+    EVP_HPKE_CTX *ctx, uint8_t *out_enc, size_t *out_enc_len, size_t max_enc,
+    const EVP_HPKE_KEY *key, const EVP_HPKE_KDF *kdf, const EVP_HPKE_AEAD *aead,
+    Span<const uint8_t> peer_public_key, Span<const uint8_t> info,
+    std::optional<Span<const uint8_t>> entropy) {
+  if (entropy.has_value() ? key->kem->auth_encap_external_entropy == nullptr
+                          : key->kem->auth_encap == nullptr) {
+    // Not all HPKE KEMs support AuthEncap.
+    OPENSSL_PUT_ERROR(EVP, EVP_R_OPERATION_NOT_SUPPORTED_FOR_THIS_KEYTYPE);
+    return 0;
+  }
+
+  const EVP_KEM *kem = key->kem->evp_kem_func();
+  EVP_HPKE_CTX_zero(ctx);
+  ctx->is_sender = 1;
+  ctx->kem = key->kem;
+  ctx->kdf = kdf;
+  ctx->aead = aead;
+  if (max_enc < kem->ciphertext_len) {
+    OPENSSL_PUT_ERROR(EVP, EVP_R_INVALID_BUFFER_SIZE);
+    return 0;
+  }
+  UniquePtr<EVP_PKEY> peer_key(key->kem->key_method->deserialize_public_key(
+      key->kem->key_method->alg_func(), peer_public_key.data(),
+      peer_public_key.size()));
+  if (peer_key == nullptr) {
+    return 0;
+  }
+
+  InplaceVector<uint8_t, MAX_SHARED_SECRET_LEN> shared_secret;
+  if (!shared_secret.TryResizeForOverwrite(kem->secret_len)) {
+    OPENSSL_PUT_ERROR(EVP, ERR_R_INTERNAL_ERROR);
+    return 0;
+  }
+  Span<uint8_t> enc_span(out_enc, kem->ciphertext_len);
+  Span<uint8_t> secret_span(shared_secret);
+  int auth_encap_ok =
+      entropy.has_value()
+          ? key->kem->auth_encap_external_entropy(
+                kem, enc_span, secret_span, peer_key.get(), key->pkey, *entropy)
+          : key->kem->auth_encap(kem, enc_span, secret_span, peer_key.get(),
+                                 key->pkey);
+  if (!auth_encap_ok ||
+      !hpke_key_schedule(ctx, HPKE_MODE_AUTH, secret_span.data(),
+                         secret_span.size(), info.data(), info.size())) {
+    EVP_HPKE_CTX_cleanup(ctx);
+    return 0;
+  }
+  *out_enc_len = kem->ciphertext_len;
+  return 1;
+}
+
 int EVP_HPKE_CTX_setup_auth_sender(
     EVP_HPKE_CTX *ctx, uint8_t *out_enc, size_t *out_enc_len, size_t max_enc,
     const EVP_HPKE_KEY *key, const EVP_HPKE_KDF *kdf, const EVP_HPKE_AEAD *aead,
@@ -1349,6 +1325,24 @@ int EVP_HPKE_CTX_setup_auth_recipient(
     return 0;
   }
   return 1;
+}
+
+static void hpke_nonce(const EVP_HPKE_CTX *ctx, uint8_t *out_nonce,
+                       size_t nonce_len) {
+  assert(nonce_len >= 8);
+
+  // Write padded big-endian bytes of `ctx->seq` to `out_nonce`.
+  OPENSSL_memset(out_nonce, 0, nonce_len);
+  uint64_t seq_copy = ctx->seq;
+  for (size_t i = 0; i < 8; i++) {
+    out_nonce[nonce_len - i - 1] = seq_copy & 0xff;
+    seq_copy >>= 8;
+  }
+
+  // XOR the encoded sequence with the `ctx->base_nonce`.
+  for (size_t i = 0; i < nonce_len; i++) {
+    out_nonce[i] ^= ctx->base_nonce[i];
+  }
 }
 
 int EVP_HPKE_CTX_open(EVP_HPKE_CTX *ctx, uint8_t *out, size_t *out_len,

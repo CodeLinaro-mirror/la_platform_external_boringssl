@@ -63,8 +63,7 @@ struct alignas(16) Reg128 {
 
 // References:
 // SysV64: https://github.com/hjl-tools/x86-psABI/wiki/x86-64-psABI-1.0.pdf
-// Win64:
-// https://docs.microsoft.com/en-us/cpp/build/x64-software-conventions?view=vs-2017#register-usage
+// Win64: https://docs.microsoft.com/en-us/cpp/build/x64-software-conventions?view=vs-2017#register-usage
 #if defined(OPENSSL_WINDOWS)
 #define LOOP_CALLER_STATE_REGISTERS()  \
   CALLER_STATE_REGISTER(uint64_t, rbx) \
@@ -99,8 +98,7 @@ struct alignas(16) Reg128 {
 
 // References:
 // SysV32: https://uclibc.org/docs/psABI-i386.pdf and
-// Win32:
-// https://docs.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=vs-2017
+// Win32: https://docs.microsoft.com/en-us/cpp/cpp/argument-passing-and-naming-conventions?view=vs-2017
 #define LOOP_CALLER_STATE_REGISTERS()  \
   CALLER_STATE_REGISTER(uint32_t, esi) \
   CALLER_STATE_REGISTER(uint32_t, edi) \
@@ -111,10 +109,8 @@ struct alignas(16) Reg128 {
 
 // References:
 // AAPCS: https://developer.arm.com/docs/ihi0042/latest
-// iOS32:
-// https://developer.apple.com/library/archive/documentation/Xcode/Conceptual/iPhoneOSABIReference/Articles/ARMv6FunctionCallingConventions.html
-// Linux:
-// http://sourcery.mentor.com/sgpp/lite/arm/portal/kbattach142/arm_gnu_linux_%20abi.pdf
+// iOS32: https://developer.apple.com/library/archive/documentation/Xcode/Conceptual/iPhoneOSABIReference/Articles/ARMv6FunctionCallingConventions.html
+// Linux: http://sourcery.mentor.com/sgpp/lite/arm/portal/kbattach142/arm_gnu_linux_%20abi.pdf
 //
 // ARM specifies a common calling convention, except r9 is left to the platform.
 // Linux treats r9 as callee-saved, while iOS 3+ treats it as caller-saved. Most
@@ -152,37 +148,36 @@ struct alignas(16) Reg128 {
 
 // References:
 // AAPCS64: https://developer.arm.com/docs/ihi0055/latest
-// iOS64:
-// https://developer.apple.com/library/archive/documentation/Xcode/Conceptual/iPhoneOSABIReference/Articles/ARM64FunctionCallingConventions.html
+// iOS64: https://developer.apple.com/library/archive/documentation/Xcode/Conceptual/iPhoneOSABIReference/Articles/ARM64FunctionCallingConventions.html
 //
 // In aarch64, r18 (accessed as w18 or x18 in a 64-bit context) is the platform
 // register. iOS says user code may not touch it. We found no clear reference
 // for Linux. The iOS behavior implies portable assembly cannot use it, and
 // aarch64 has many registers. Thus this framework ignores the register's
 // existence. We test r18 violations in arm-xlate.pl.
-#define LOOP_CALLER_STATE_REGISTERS()                                 \
+#define LOOP_CALLER_STATE_REGISTERS()                                \
   /* Per AAPCS64, section 5.1.2, only the bottom 64 bits of v8-v15 */ \
-  /* are preserved. These are accessed as dN. */                      \
-  CALLER_STATE_REGISTER(uint64_t, d8)                                 \
-  CALLER_STATE_REGISTER(uint64_t, d9)                                 \
-  CALLER_STATE_REGISTER(uint64_t, d10)                                \
-  CALLER_STATE_REGISTER(uint64_t, d11)                                \
-  CALLER_STATE_REGISTER(uint64_t, d12)                                \
-  CALLER_STATE_REGISTER(uint64_t, d13)                                \
-  CALLER_STATE_REGISTER(uint64_t, d14)                                \
-  CALLER_STATE_REGISTER(uint64_t, d15)                                \
-  /* For consistency with dN, use the 64-bit name xN, rather than */  \
-  /* the generic rN. */                                               \
-  CALLER_STATE_REGISTER(uint64_t, x19)                                \
-  CALLER_STATE_REGISTER(uint64_t, x20)                                \
-  CALLER_STATE_REGISTER(uint64_t, x21)                                \
-  CALLER_STATE_REGISTER(uint64_t, x22)                                \
-  CALLER_STATE_REGISTER(uint64_t, x23)                                \
-  CALLER_STATE_REGISTER(uint64_t, x24)                                \
-  CALLER_STATE_REGISTER(uint64_t, x25)                                \
-  CALLER_STATE_REGISTER(uint64_t, x26)                                \
-  CALLER_STATE_REGISTER(uint64_t, x27)                                \
-  CALLER_STATE_REGISTER(uint64_t, x28)                                \
+  /* are preserved. These are accessed as dN. */                     \
+  CALLER_STATE_REGISTER(uint64_t, d8)                                \
+  CALLER_STATE_REGISTER(uint64_t, d9)                                \
+  CALLER_STATE_REGISTER(uint64_t, d10)                               \
+  CALLER_STATE_REGISTER(uint64_t, d11)                               \
+  CALLER_STATE_REGISTER(uint64_t, d12)                               \
+  CALLER_STATE_REGISTER(uint64_t, d13)                               \
+  CALLER_STATE_REGISTER(uint64_t, d14)                               \
+  CALLER_STATE_REGISTER(uint64_t, d15)                               \
+  /* For consistency with dN, use the 64-bit name xN, rather than */ \
+  /* the generic rN. */                                              \
+  CALLER_STATE_REGISTER(uint64_t, x19)                               \
+  CALLER_STATE_REGISTER(uint64_t, x20)                               \
+  CALLER_STATE_REGISTER(uint64_t, x21)                               \
+  CALLER_STATE_REGISTER(uint64_t, x22)                               \
+  CALLER_STATE_REGISTER(uint64_t, x23)                               \
+  CALLER_STATE_REGISTER(uint64_t, x24)                               \
+  CALLER_STATE_REGISTER(uint64_t, x25)                               \
+  CALLER_STATE_REGISTER(uint64_t, x26)                               \
+  CALLER_STATE_REGISTER(uint64_t, x27)                               \
+  CALLER_STATE_REGISTER(uint64_t, x28)                               \
   CALLER_STATE_REGISTER(uint64_t, x29)
 
 #endif  // X86_64 || X86 || ARM || AARCH64
@@ -283,13 +278,14 @@ inline crypto_word_t ToWord(T t) {
 // is true and unwind tests have been enabled, `func` is single-stepped under an
 // unwind test.
 //
-// `args` is wrapped in a `DeductionGuard` so `func` determines the template
-// arguments. Otherwise, `args` may deduce `Args` incorrectly. For instance, if
-// `func` takes const int *, and the caller passes an int *, the compiler will
-// complain the deduced types do not match.
+// It returns the value as a `crypto_word_t` to work around problems when `R` is
+// void. `args` is wrapped in a `DeductionGuard` so `func` determines the
+// template arguments. Otherwise, `args` may deduce `Args` incorrectly. For
+// instance, if `func` takes const int *, and the caller passes an int *, the
+// compiler will complain the deduced types do not match.
 template <typename R, typename... Args>
-inline R CheckImpl(Result *out, bool unwind, R (*func)(Args...),
-                   typename DeductionGuard<Args>::Type... args) {
+inline crypto_word_t CheckImpl(Result *out, bool unwind, R (*func)(Args...),
+                               typename DeductionGuard<Args>::Type... args) {
   // We only support up to 8 arguments, so all arguments on aarch64 are passed
   // in registers. This is simpler and avoids the iOS discrepancy around packing
   // small arguments on the stack. (See the iOS64 reference.)
@@ -300,23 +296,28 @@ inline R CheckImpl(Result *out, bool unwind, R (*func)(Args...),
   crypto_word_t argv[sizeof...(args) + 1] = {
       ToWord(args)...,
   };
-  [[maybe_unused]] crypto_word_t ret =
-      RunTrampoline(out, reinterpret_cast<crypto_word_t>(func), argv,
-                    sizeof...(args), unwind);
-  if constexpr (std::is_pointer_v<R>) {
-    return reinterpret_cast<R>(ret);
-  } else if constexpr (!std::is_void_v<R>) {
-    return static_cast<R>(ret);
-  }
+  return RunTrampoline(out, reinterpret_cast<crypto_word_t>(func), argv,
+                       sizeof...(args), unwind);
 }
 #else
 // To simplify callers when ABI testing support is unavoidable, provide a backup
-// CheckImpl implementation.
+// CheckImpl implementation. It must be specialized for void returns because we
+// call `func` directly.
 template <typename R, typename... Args>
-inline R CheckImpl(Result *out, bool /* unwind */, R (*func)(Args...),
-                   typename DeductionGuard<Args>::Type... args) {
+inline std::enable_if_t<!std::is_void_v<R>, crypto_word_t> CheckImpl(
+    Result *out, bool /* unwind */, R (*func)(Args...),
+    typename DeductionGuard<Args>::Type... args) {
   *out = Result();
   return func(args...);
+}
+
+template <typename... Args>
+inline crypto_word_t CheckImpl(Result *out, bool /* unwind */,
+                               void (*func)(Args...),
+                               typename DeductionGuard<Args>::Type... args) {
+  *out = Result();
+  func(args...);
+  return 0;
 }
 #endif  // SUPPORTS_ABI_TEST
 
@@ -330,8 +331,15 @@ inline R CheckImpl(Result *out, bool /* unwind */, R (*func)(Args...),
 // compilers.
 std::string FixVAArgsString(const char *str);
 
-inline void ReportFailure(const Result &result, const char *va_args_str,
-                          const char *file, int line) {
+// CheckGTest behaves like `CheckImpl`, but it returns the correct type and
+// raises GTest assertions on failure. If `unwind` is true and unwind tests are
+// enabled, `func` is single-stepped under an unwind test.
+template <typename R, typename... Args>
+inline R CheckGTest(const char *va_args_str, const char *file, int line,
+                    bool unwind, R (*func)(Args...),
+                    typename DeductionGuard<Args>::Type... args) {
+  Result result;
+  crypto_word_t ret = CheckImpl(&result, unwind, func, args...);
   if (!result.ok()) {
     testing::Message msg;
     msg << "ABI failures in " << FixVAArgsString(va_args_str) << ":\n";
@@ -340,24 +348,7 @@ inline void ReportFailure(const Result &result, const char *va_args_str,
     }
     ADD_FAILURE_AT(file, line) << msg;
   }
-}
-
-// CheckGTest behaves like `CheckImpl`, but it raises GTest assertions on
-// failure. If `unwind` is true and unwind tests are enabled, `func` is
-// single-stepped under an unwind test.
-template <typename R, typename... Args>
-inline R CheckGTest(const char *va_args_str, const char *file, int line,
-                    bool unwind, R (*func)(Args...),
-                    typename DeductionGuard<Args>::Type... args) {
-  Result result;
-  if constexpr (std::is_void_v<R>) {
-    CheckImpl(&result, unwind, func, args...);
-    ReportFailure(result, va_args_str, file, line);
-  } else {
-    R ret = CheckImpl(&result, unwind, func, args...);
-    ReportFailure(result, va_args_str, file, line);
-    return ret;
-  }
+  return (R)ret;
 }
 
 }  // namespace internal
@@ -368,7 +359,7 @@ inline R CheckGTest(const char *va_args_str, const char *file, int line,
 template <typename R, typename... Args>
 inline R Check(Result *out, R (*func)(Args...),
                typename internal::DeductionGuard<Args>::Type... args) {
-  return internal::CheckImpl(out, false, func, args...);
+  return (R)internal::CheckImpl(out, false, func, args...);
 }
 
 // EnableUnwindTests enables unwind tests, if supported. If not supported, it
@@ -406,16 +397,14 @@ bool UnwindTestsEnabled();
 #endif
 
 // CHECK_ABI_SEH behaves like `CHECK_ABI` but enables unwind testing on Windows.
-#define CHECK_ABI_SEH(name, ...)                         \
-  bssl::abi_test::internal::CheckGTest(                  \
-      #name ", " #__VA_ARGS__, __FILE__, __LINE__, true, \
-      bssl::AsmRaw<name>::kRaw, ##__VA_ARGS__)
+#define CHECK_ABI_SEH(...)                                                     \
+  bssl::abi_test::internal::CheckGTest(#__VA_ARGS__, __FILE__, __LINE__, true, \
+                                       __VA_ARGS__)
 
 // CHECK_ABI_NO_UNWIND behaves like `CHECK_ABI` but disables unwind testing.
-#define CHECK_ABI_NO_UNWIND(name, ...)                    \
-  bssl::abi_test::internal::CheckGTest(                   \
-      #name ", " #__VA_ARGS__, __FILE__, __LINE__, false, \
-      bssl::AsmRaw<name>::kRaw, ##__VA_ARGS__)
+#define CHECK_ABI_NO_UNWIND(...)                                         \
+  bssl::abi_test::internal::CheckGTest(#__VA_ARGS__, __FILE__, __LINE__, \
+                                       false, __VA_ARGS__)
 
 
 // Internal functions.
@@ -446,8 +435,8 @@ crypto_word_t abi_test_trampoline(crypto_word_t func,
 // This symbol is not a function and should not be called.
 void abi_test_unwind_start(Uncallable);
 
-// abi_test_unwind_return points at the instruction immediately after the call
-// in `abi_test_trampoline`. When unwinding the function under test, this is the
+// abi_test_unwind_return points at the instruction immediately after the call in
+// `abi_test_trampoline`. When unwinding the function under test, this is the
 // expected address in the `abi_test_trampoline` frame. After this address, the
 // unwind tester should ignore `SIGTRAP` until `abi_test_unwind_stop`.
 //

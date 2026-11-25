@@ -398,6 +398,8 @@ struct x509_store_ctx_st {
   // Callbacks for various operations
   X509_STORE_CTX_verify_cb verify_cb;  // error callback
 
+  // The following is built up
+  int last_untrusted;     // index of last untrusted cert
   STACK_OF(X509) *chain;  // chain of X509s - built up and trusted
 
   // When something goes wrong, this is why
@@ -467,10 +469,6 @@ int x509_verify_signature_bytes(const X509_ALGOR *sigalg,
 // It returns the length of the signature on success and zero on error.
 int x509_sign_to_bit_string(EVP_MD_CTX *ctx, ASN1_BIT_STRING *out,
                             Span<const uint8_t> in);
-
-// x509_sig_nid_allowed returns whether a signature algorithm with NID `sig_nid`
-// may be used for a certificate verification with `ctx`.
-bool x509_sig_nid_allowed(const X509_STORE_CTX *ctx, int sig_nid);
 
 
 // Path-building functions.
@@ -601,12 +599,9 @@ STACK_OF(CONF_VALUE) *X509V3_parse_list(const char *line);
   ERR_add_error_data(6, "section:", (val)->section, ",name:", (val)->name, \
                      ",value:", (val)->value);
 
-// GENERAL_NAME_cmp compares `a` and `b`. It returns zero if they are equal, and
-// a negative or positive value if `a` sorts before or after `b`, respectively.
-// Names are ordered first by type, then by type-specific contents. The order
-// is arbitrary but suitable for sorting, with one exception: if a directoryName
-// cannot be serialized, `X509_NAME_cmp`, and thus this function, returns -2.
-// This cannot happen for parsed names that have not since been modified.
+// GENERAL_NAME_cmp returns zero if `a` and `b` are equal and a non-zero
+// value otherwise. Note this function does not provide a comparison suitable
+// for sorting.
 int GENERAL_NAME_cmp(const GENERAL_NAME *a, const GENERAL_NAME *b);
 
 // X509_VERIFY_PARAM_lookup returns a pre-defined `X509_VERIFY_PARAM` named by
@@ -666,12 +661,11 @@ bool x509_evaluate_mtc_subtree_inclusion_proof(
     uint64_t subtree_end);
 
 // x509_verify_mtc verifies `x509` as a Merkle Tree Certificate issued by
-// `issuer`, which must be an MTC CA represented in X.509 format, as part of a
-// verification operation for `ctx`. `pkey` is the `issuer`'s public key. It
-// returns one if the MTC is valid, or zero on error. This function only checks
-// the MTC proof itself and does not perform a full certificate validation.
-int x509_verify_mtc(const X509_STORE_CTX *ctx, const X509 *x509,
-                    const EVP_PKEY *pkey, const X509 *issuer);
+// `issuer`, which must be an MTC CA represented in X.509 format. `pkey` is the
+// `issuer`'s public key. It returns one if the MTC is valid, or zero on error.
+// This function only checks the MTC proof itself and does not perform a full
+// certificate validation.
+int x509_verify_mtc(const X509 *x509, const EVP_PKEY *pkey, const X509 *issuer);
 
 
 // Standard extensions.

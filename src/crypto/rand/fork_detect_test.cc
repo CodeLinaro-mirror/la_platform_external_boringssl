@@ -53,7 +53,7 @@
 BSSL_NAMESPACE_BEGIN
 namespace {
 
-pid_t WaitpidEINTR(pid_t pid, int *out_status, int options) {
+static pid_t WaitpidEINTR(pid_t pid, int *out_status, int options) {
   pid_t ret;
   do {
     ret = waitpid(pid, out_status, options);
@@ -65,7 +65,7 @@ pid_t WaitpidEINTR(pid_t pid, int *out_status, int options) {
 // The *InChild functions run inside a child process and must report errors via
 // `stderr` and `_exit` rather than GTest.
 
-void CheckGenerationAtLeastInChild(const char *name,
+static void CheckGenerationAtLeastInChild(const char *name,
                                    uint64_t minimum_expected) {
   uint64_t generation = CRYPTO_get_fork_generation();
   if (generation < minimum_expected) {
@@ -83,7 +83,7 @@ void CheckGenerationAtLeastInChild(const char *name,
   }
 }
 
-void WaitForChildOrDie(pid_t pid) {
+static void WaitForChildOrDie(pid_t pid) {
   // Wait for the child and pass its exit code up.
   int status;
   if (WaitpidEINTR(pid, &status, 0) < 0) {
@@ -102,7 +102,7 @@ void WaitForChildOrDie(pid_t pid) {
 
 // ForkInChild forks a child which runs `f`. If the child exits unsuccessfully,
 // this function will also exit unsuccessfully.
-void ForkInChild(std::function<void()> f) {
+static void ForkInChild(std::function<void()> f) {
   fflush(stderr);  // Avoid duplicating any buffered output.
   const pid_t pid = fork();
   if (pid < 0) {
@@ -118,7 +118,7 @@ void ForkInChild(std::function<void()> f) {
 
 // Many systems provide an alternate API to create a child process and run code
 // in it.
-bool AlternateForkInChild(std::function<void()> f) {
+static bool AlternateForkInChild(std::function<void()> f) {
   fflush(stderr);  // Avoid duplicating any buffered output.
 #if defined(OPENSSL_LINUX)
   // On Linux, clone() can make new processes, too (even by default).
