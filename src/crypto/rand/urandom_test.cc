@@ -176,7 +176,7 @@ struct Event {
   std::string filename;
 };
 
-std::string ToString(const std::vector<Event> &trace) {
+static std::string ToString(const std::vector<Event> &trace) {
   std::string ret;
   for (const auto &event : trace) {
     if (!ret.empty()) {
@@ -216,15 +216,15 @@ static const unsigned NEXT_FLAG = 512;
 //       one.
 //
 // This call returns true on success and false otherwise.
-bool regs_read(struct regs *out_regs, int child_pid);
+static bool regs_read(struct regs *out_regs, int child_pid);
 
 // regs_set_ret sets the return value of the system call that `child_pid` has
 // just finished, to `ret`. It returns true on success and false otherwise.
-bool regs_set_ret(int child_pid, int ret);
+static bool regs_set_ret(int child_pid, int ret);
 
 // regs_break_syscall causes the system call that `child_pid` is about to enter
 // to fail to run.
-bool regs_break_syscall(int child_pid, const struct regs *orig_regs);
+static bool regs_break_syscall(int child_pid, const struct regs *orig_regs);
 
 struct regs {
   uintptr_t syscall;
@@ -235,7 +235,7 @@ struct regs {
 
 #if defined(OPENSSL_X86_64)
 
-bool regs_read(struct regs *out_regs, int child_pid) {
+static bool regs_read(struct regs *out_regs, int child_pid) {
   if (ptrace(PTRACE_GETREGS, child_pid, nullptr, &out_regs->regs) != 0) {
     return false;
   }
@@ -248,7 +248,7 @@ bool regs_read(struct regs *out_regs, int child_pid) {
   return true;
 }
 
-bool regs_set_ret(int child_pid, int ret) {
+static bool regs_set_ret(int child_pid, int ret) {
   struct regs regs;
   if (!regs_read(&regs, child_pid)) {
     return false;
@@ -257,7 +257,7 @@ bool regs_set_ret(int child_pid, int ret) {
   return ptrace(PTRACE_SETREGS, child_pid, nullptr, &regs.regs) == 0;
 }
 
-bool regs_break_syscall(int child_pid, const struct regs *orig_regs) {
+static bool regs_break_syscall(int child_pid, const struct regs *orig_regs) {
   // Replace the syscall number with -1 to cause the kernel to fail the call.
   struct user_regs_struct regs = orig_regs->regs;
   regs.orig_rax = -1;
@@ -266,7 +266,7 @@ bool regs_break_syscall(int child_pid, const struct regs *orig_regs) {
 
 #elif defined(OPENSSL_AARCH64)
 
-bool regs_read(struct regs *out_regs, int child_pid) {
+static bool regs_read(struct regs *out_regs, int child_pid) {
   struct iovec io;
   io.iov_base = &out_regs->regs;
   io.iov_len = sizeof(out_regs->regs);
@@ -283,7 +283,8 @@ bool regs_read(struct regs *out_regs, int child_pid) {
   return true;
 }
 
-bool set_regset(int child_pid, int regset, const void *data, size_t len) {
+static bool set_regset(int child_pid, int regset, const void *data,
+                       size_t len) {
   struct iovec io;
   io.iov_base = const_cast<void *>(data);
   io.iov_len = len;
@@ -291,7 +292,7 @@ bool set_regset(int child_pid, int regset, const void *data, size_t len) {
                 &io) == 0;
 }
 
-bool regs_set_ret(int child_pid, int ret) {
+static bool regs_set_ret(int child_pid, int ret) {
   struct regs regs;
   if (!regs_read(&regs, child_pid)) {
     return false;
@@ -300,7 +301,7 @@ bool regs_set_ret(int child_pid, int ret) {
   return set_regset(child_pid, NT_PRSTATUS, &regs.regs, sizeof(regs.regs));
 }
 
-bool regs_break_syscall(int child_pid, const struct regs *orig_regs) {
+static bool regs_break_syscall(int child_pid, const struct regs *orig_regs) {
   // Replace the syscall number with -1 to cause the kernel to fail the call.
   int syscall = -1;
   return set_regset(child_pid, NT_ARM_SYSTEM_CALL, &syscall, sizeof(syscall));
@@ -310,8 +311,8 @@ bool regs_break_syscall(int child_pid, const struct regs *orig_regs) {
 
 // memcpy_to_remote copies `n` bytes from `in_src` in the local address space,
 // to `dest` in the address space of `child_pid`.
-void memcpy_to_remote(int child_pid, uint64_t dest, const void *in_src,
-                      size_t n) {
+static void memcpy_to_remote(int child_pid, uint64_t dest, const void *in_src,
+                             size_t n) {
   const uint8_t *src = reinterpret_cast<const uint8_t *>(in_src);
 
   // ptrace always works with ill-defined "words", which appear to be 64-bit
@@ -351,7 +352,7 @@ void memcpy_to_remote(int child_pid, uint64_t dest, const void *in_src,
   }
 }
 
-uint8_t get_byte_from_remote(int child_pid, uint64_t ptr) {
+static uint8_t get_byte_from_remote(int child_pid, uint64_t ptr) {
   // ptrace always works with ill-defined "words", which appear to be 64-bit
   // on 64-bit systems.
 #if !defined(OPENSSL_64_BIT)
@@ -368,7 +369,7 @@ uint8_t get_byte_from_remote(int child_pid, uint64_t ptr) {
   return bytes[offset];
 }
 
-std::string get_string_from_remote(int child_pid, uint64_t ptr) {
+static std::string get_string_from_remote(int child_pid, uint64_t ptr) {
   std::string ret;
 
   for (;;) {
@@ -386,8 +387,8 @@ std::string get_string_from_remote(int child_pid, uint64_t ptr) {
 // GetTrace runs `thunk` in a forked process and observes the resulting system
 // calls using ptrace. It simulates a variety of failures based on the contents
 // of `flags` and records the observed events by appending to `out_trace`.
-void GetTrace(std::vector<Event> *out_trace, unsigned flags,
-              std::function<void()> thunk) {
+static void GetTrace(std::vector<Event> *out_trace, unsigned flags,
+                     std::function<void()> thunk) {
   const int child_pid = fork();
   ASSERT_NE(-1, child_pid);
 
@@ -596,15 +597,17 @@ void GetTrace(std::vector<Event> *out_trace, unsigned flags,
 }
 
 // TestFunction is the function that `GetTrace` is asked to trace.
-void TestFunction() {
+static void TestFunction() {
   uint8_t byte;
   RAND_bytes(&byte, sizeof(byte));
   RAND_bytes(&byte, sizeof(byte));
 }
 
-bool have_fork_detection() { return bssl::CRYPTO_get_fork_generation() != 0; }
+static bool have_fork_detection() {
+  return bssl::CRYPTO_get_fork_generation() != 0;
+}
 
-bool AppendDaemonEvents(std::vector<Event> *events, unsigned flags) {
+static bool AppendDaemonEvents(std::vector<Event> *events, unsigned flags) {
   events->push_back(Event::Socket());
   if (flags & SOCKET_ERROR) {
     return false;
@@ -635,7 +638,7 @@ out:
 // TestFunctionPRNGModel is a model of how the urandom.c code will behave when
 // `TestFunction` is run. It should return the same trace of events that
 // `GetTrace` will observe the real code making.
-std::vector<Event> TestFunctionPRNGModel(unsigned flags) {
+static std::vector<Event> TestFunctionPRNGModel(unsigned flags) {
   std::vector<Event> ret;
 
   bool daemon_failed = false;

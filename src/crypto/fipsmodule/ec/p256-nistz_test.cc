@@ -42,92 +42,49 @@ namespace {
     (defined(OPENSSL_X86_64) || defined(OPENSSL_AARCH64)) && \
     !defined(OPENSSL_SMALL) && !defined(BORINGSSL_SHARED_LIBRARY)
 
-struct ImplTestNames {
-  template <typename T>
-  static const char *GetName(int) {
-    return T::Name;
-  }
+struct P256NistzSelectImpl {
+  const char *name;
+  void (*select_w5)(P256_POINT *val, const P256_POINT in_t[16], int index);
+  void (*select_w7)(P256_POINT_AFFINE *val, const P256_POINT_AFFINE in_t[64],
+                    int index);
 };
 
+static std::vector<P256NistzSelectImpl> AllP256NistzSelectImpls() {
+  std::vector<P256NistzSelectImpl> impls;
 #if defined(OPENSSL_X86_64)
-struct NoHwAccel {
-  static constexpr char Name[] = "NoHW";
-  static constexpr bool IsCapable() { return true; }
-  static constexpr auto &select_w5 = ecp_nistz256_select_w5_nohw;
-  static constexpr auto &select_w7 = ecp_nistz256_select_w7_nohw;
-  static constexpr auto &neg = ecp_nistz256_neg;
-  static constexpr auto &mul_mont = ecp_nistz256_mul_mont_nohw;
-  static constexpr auto &sqr_mont = ecp_nistz256_sqr_mont_nohw;
-  static constexpr auto &ord_mul_mont = ecp_nistz256_ord_mul_mont_nohw;
-  static constexpr auto &ord_sqr_mont = ecp_nistz256_ord_sqr_mont_nohw;
-  static constexpr auto &point_double = ecp_nistz256_point_double_nohw;
-  static constexpr auto &point_add = ecp_nistz256_point_add_nohw;
-  static constexpr auto &point_add_affine = ecp_nistz256_point_add_affine_nohw;
-};
-static_assert(AsmRaw<NoHwAccel::neg>::kRaw == asm_raw::ecp_nistz256_neg);
-
-struct Avx2SelectAccel {
-  static constexpr char Name[] = "AVX2";
-  static bool IsCapable() { return CRYPTO_is_AVX2_capable(); }
-  static constexpr auto &select_w5 = ecp_nistz256_select_w5_avx2;
-  static constexpr auto &select_w7 = ecp_nistz256_select_w7_avx2;
-};
-static_assert(AsmRaw<Avx2SelectAccel::select_w5>::kRaw ==
-              asm_raw::ecp_nistz256_select_w5_avx2);
-
-struct AdxAccel {
-  static constexpr char Name[] = "ADX";
-  static bool IsCapable() {
-    return CRYPTO_is_BMI2_capable() && CRYPTO_is_ADX_capable();
+  impls.push_back({
+      "NoHW",
+      ecp_nistz256_select_w5_nohw,
+      ecp_nistz256_select_w7_nohw,
+  });
+  if (CRYPTO_is_AVX2_capable()) {
+    impls.push_back({
+        "AVX2",
+        ecp_nistz256_select_w5_nohw,
+        ecp_nistz256_select_w7_nohw,
+    });
   }
-  static constexpr auto &neg = ecp_nistz256_neg;
-  static constexpr auto &mul_mont = ecp_nistz256_mul_mont_adx;
-  static constexpr auto &sqr_mont = ecp_nistz256_sqr_mont_adx;
-  static constexpr auto &ord_mul_mont = ecp_nistz256_ord_mul_mont_adx;
-  static constexpr auto &ord_sqr_mont = ecp_nistz256_ord_sqr_mont_adx;
-  static constexpr auto &point_double = ecp_nistz256_point_double_adx;
-  static constexpr auto &point_add = ecp_nistz256_point_add_adx;
-  static constexpr auto &point_add_affine = ecp_nistz256_point_add_affine_adx;
-};
-static_assert(AsmRaw<AdxAccel::mul_mont>::kRaw ==
-              asm_raw::ecp_nistz256_mul_mont_adx);
-
-using P256NistzSelectImpls = testing::Types<NoHwAccel, Avx2SelectAccel>;
-using P256NistzImpls = testing::Types<NoHwAccel, AdxAccel>;
 #else
-struct Impl {
-  static constexpr char Name[] = "Impl";
-  static constexpr bool IsCapable() { return true; }
-  static constexpr auto &select_w5 = ecp_nistz256_select_w5;
-  static constexpr auto &select_w7 = ecp_nistz256_select_w7;
-  static constexpr auto &neg = ecp_nistz256_neg;
-  static constexpr auto &mul_mont = ecp_nistz256_mul_mont;
-  static constexpr auto &sqr_mont = ecp_nistz256_sqr_mont;
-  static constexpr auto &ord_mul_mont = ecp_nistz256_ord_mul_mont;
-  static constexpr auto &ord_sqr_mont = ecp_nistz256_ord_sqr_mont;
-  static constexpr auto &point_double = ecp_nistz256_point_double;
-  static constexpr auto &point_add = ecp_nistz256_point_add;
-  static constexpr auto &point_add_affine = ecp_nistz256_point_add_affine;
-};
-static_assert(AsmRaw<Impl::neg>::kRaw == asm_raw::ecp_nistz256_neg);
-
-using P256NistzSelectImpls = testing::Types<Impl>;
-using P256NistzImpls = testing::Types<Impl>;
+  impls.push_back({
+      "Impl",
+      ecp_nistz256_select_w5,
+      ecp_nistz256_select_w7,
+  });
 #endif
+  return impls;
+}
 
-template <typename T>
-class P256NistzSelectImplTest : public testing::Test {
+class P256NistzSelectImplTest : public testing::TestWithParam<P256NistzSelectImpl> {
  protected:
-  void SetUp() override {
-    if (!T::IsCapable()) {
-      GTEST_SKIP();
-    }
-  }
+  const P256NistzSelectImpl &impl() const { return GetParam(); }
 };
 
-TYPED_TEST_SUITE(P256NistzSelectImplTest, P256NistzSelectImpls, ImplTestNames);
+INSTANTIATE_TEST_SUITE_P(All, P256NistzSelectImplTest,
+                         testing::ValuesIn(AllP256NistzSelectImpls()),
+                         [](const testing::TestParamInfo<P256NistzSelectImpl> &params)
+                             -> std::string { return params.param.name; });
 
-TYPED_TEST(P256NistzSelectImplTest, SelectW5) {
+TEST_P(P256NistzSelectImplTest, SelectW5) {
   // Fill a table with some garbage input.
   alignas(64) P256_POINT table[16];
   for (size_t i = 0; i < 16; i++) {
@@ -140,27 +97,26 @@ TYPED_TEST(P256NistzSelectImplTest, SelectW5) {
 
   for (int i = 0; i <= 16; i++) {
     P256_POINT val;
-    TypeParam::select_w5(&val, table, i);
+    impl().select_w5(&val, table, i);
 
     P256_POINT expected;
     if (i == 0) {
       OPENSSL_memset(&expected, 0, sizeof(expected));
     } else {
-      expected = table[i - 1];
+      expected = table[i-1];
     }
 
-    EXPECT_EQ(
-        Bytes(reinterpret_cast<const char *>(&expected), sizeof(expected)),
-        Bytes(reinterpret_cast<const char *>(&val), sizeof(val)));
+    EXPECT_EQ(Bytes(reinterpret_cast<const char *>(&expected), sizeof(expected)),
+              Bytes(reinterpret_cast<const char *>(&val), sizeof(val)));
   }
 
   // This is a constant-time function, so it is only necessary to instrument one
   // index for ABI checking.
   P256_POINT val;
-  CHECK_ABI(TypeParam::select_w5, &val, table, 7);
+  CHECK_ABI(impl().select_w5, &val, table, 7);
 }
 
-TYPED_TEST(P256NistzSelectImplTest, SelectW7) {
+TEST_P(P256NistzSelectImplTest, SelectW7) {
   // Fill a table with some garbage input.
   alignas(64) P256_POINT_AFFINE table[64];
   for (size_t i = 0; i < 64; i++) {
@@ -171,29 +127,29 @@ TYPED_TEST(P256NistzSelectImplTest, SelectW7) {
 
   for (int i = 0; i <= 64; i++) {
     P256_POINT_AFFINE val;
-    TypeParam::select_w7(&val, table, i);
+    impl().select_w7(&val, table, i);
 
     P256_POINT_AFFINE expected;
     if (i == 0) {
       OPENSSL_memset(&expected, 0, sizeof(expected));
     } else {
-      expected = table[i - 1];
+      expected = table[i-1];
     }
 
-    EXPECT_EQ(
-        Bytes(reinterpret_cast<const char *>(&expected), sizeof(expected)),
-        Bytes(reinterpret_cast<const char *>(&val), sizeof(val)));
+    EXPECT_EQ(Bytes(reinterpret_cast<const char *>(&expected), sizeof(expected)),
+              Bytes(reinterpret_cast<const char *>(&val), sizeof(val)));
   }
 
   // This is a constant-time function, so it is only necessary to instrument one
   // index for ABI checking.
   P256_POINT_AFFINE val;
-  CHECK_ABI(TypeParam::select_w7, &val, table, 42);
+  CHECK_ABI(impl().select_w7, &val, table, 42);
 }
 
-std::string FieldElementToString(const BN_ULONG a[P256_LIMBS]) {
+
+static std::string FieldElementToString(const BN_ULONG a[P256_LIMBS]) {
   std::string ret;
-  for (size_t i = P256_LIMBS - 1; i < P256_LIMBS; i--) {
+  for (size_t i = P256_LIMBS-1; i < P256_LIMBS; i--) {
     char buf[2 * BN_BYTES + 1];
     snprintf(buf, sizeof(buf), BN_HEX_FMT2, a[i]);
     ret += buf;
@@ -201,7 +157,7 @@ std::string FieldElementToString(const BN_ULONG a[P256_LIMBS]) {
   return ret;
 }
 
-testing::AssertionResult ExpectFieldElementsEqual(
+static testing::AssertionResult ExpectFieldElementsEqual(
     const char *expected_expr, const char *actual_expr,
     const BN_ULONG expected[P256_LIMBS], const BN_ULONG actual[P256_LIMBS]) {
   if (OPENSSL_memcmp(expected, actual, sizeof(BN_ULONG) * P256_LIMBS) == 0) {
@@ -296,7 +252,8 @@ TEST(P256_NistzTest, BEEU) {
   }
 }
 
-bool GetFieldElement(FileTest *t, BN_ULONG out[P256_LIMBS], const char *name) {
+static bool GetFieldElement(FileTest *t, BN_ULONG out[P256_LIMBS],
+                            const char *name) {
   std::vector<uint8_t> bytes;
   if (!t->GetBytes(&bytes, name)) {
     return false;
@@ -318,7 +275,7 @@ bool GetFieldElement(FileTest *t, BN_ULONG out[P256_LIMBS], const char *name) {
   return true;
 }
 
-bool PointToAffine(P256_POINT_AFFINE *out, const P256_POINT *in) {
+static bool PointToAffine(P256_POINT_AFFINE *out, const P256_POINT *in) {
   static const uint8_t kP[] = {
       0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
       0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0xff,
@@ -334,7 +291,8 @@ bool PointToAffine(P256_POINT_AFFINE *out, const P256_POINT *in) {
   }
 
   // Coordinates must be fully-reduced.
-  if (BN_cmp(x.get(), p.get()) >= 0 || BN_cmp(y.get(), p.get()) >= 0 ||
+  if (BN_cmp(x.get(), p.get()) >= 0 ||
+      BN_cmp(y.get(), p.get()) >= 0 ||
       BN_cmp(z.get(), p.get()) >= 0) {
     return false;
   }
@@ -370,10 +328,9 @@ bool PointToAffine(P256_POINT_AFFINE *out, const P256_POINT *in) {
   return true;
 }
 
-testing::AssertionResult ExpectPointsEqual(const char *expected_expr,
-                                           const char *actual_expr,
-                                           const P256_POINT_AFFINE *expected,
-                                           const P256_POINT *actual) {
+static testing::AssertionResult ExpectPointsEqual(
+    const char *expected_expr, const char *actual_expr,
+    const P256_POINT_AFFINE *expected, const P256_POINT *actual) {
   // There are multiple representations of the same `P256_POINT`, so convert to
   // `P256_POINT_AFFINE` and compare.
   P256_POINT_AFFINE affine;
@@ -399,77 +356,138 @@ testing::AssertionResult ExpectPointsEqual(const char *expected_expr,
 
 #define EXPECT_POINTS_EQUAL(a, b) EXPECT_PRED_FORMAT2(ExpectPointsEqual, a, b)
 
-template <typename T>
-using P256NistzImplTest = P256NistzSelectImplTest<T>;
+struct P256NistzImpl {
+  const char *name;
+  void (*neg)(BN_ULONG res[P256_LIMBS], const BN_ULONG a[P256_LIMBS]);
+  void (*mul_mont)(BN_ULONG res[P256_LIMBS], const BN_ULONG a[P256_LIMBS],
+                   const BN_ULONG b[P256_LIMBS]);
+  void (*sqr_mont)(BN_ULONG res[P256_LIMBS], const BN_ULONG a[P256_LIMBS]);
+  void (*ord_mul_mont)(BN_ULONG res[P256_LIMBS], const BN_ULONG a[P256_LIMBS],
+                       const BN_ULONG b[P256_LIMBS]);
+  void (*ord_sqr_mont)(BN_ULONG res[P256_LIMBS], const BN_ULONG a[P256_LIMBS],
+                       BN_ULONG rep);
+  void (*point_double)(P256_POINT *r, const P256_POINT *a);
+  void (*point_add)(P256_POINT *r, const P256_POINT *a, const P256_POINT *b);
+  void (*point_add_affine)(P256_POINT *r, const P256_POINT *a,
+                           const P256_POINT_AFFINE *b);
+};
 
-TYPED_TEST_SUITE(P256NistzImplTest, P256NistzImpls, ImplTestNames);
+static std::vector<P256NistzImpl> AllP256NistzImpls() {
+  std::vector<P256NistzImpl> impls;
+#if defined(OPENSSL_X86_64)
+  impls.push_back({
+      "NoHW",
+      ecp_nistz256_neg,
+      ecp_nistz256_mul_mont_nohw,
+      ecp_nistz256_sqr_mont_nohw,
+      ecp_nistz256_ord_mul_mont_nohw,
+      ecp_nistz256_ord_sqr_mont_nohw,
+      ecp_nistz256_point_double_nohw,
+      ecp_nistz256_point_add_nohw,
+      ecp_nistz256_point_add_affine_nohw,
+  });
+  if (CRYPTO_is_BMI2_capable() && CRYPTO_is_ADX_capable()) {
+    impls.push_back({
+        "ADX",
+        ecp_nistz256_neg,
+        ecp_nistz256_mul_mont_adx,
+        ecp_nistz256_sqr_mont_adx,
+        ecp_nistz256_ord_mul_mont_adx,
+        ecp_nistz256_ord_sqr_mont_adx,
+        ecp_nistz256_point_double_adx,
+        ecp_nistz256_point_add_adx,
+        ecp_nistz256_point_add_affine_adx,
+    });
+  }
+#else
+  impls.push_back({
+      "Impl",
+      ecp_nistz256_neg,
+      ecp_nistz256_mul_mont,
+      ecp_nistz256_sqr_mont,
+      ecp_nistz256_ord_mul_mont,
+      ecp_nistz256_ord_sqr_mont,
+      ecp_nistz256_point_double,
+      ecp_nistz256_point_add,
+      ecp_nistz256_point_add_affine,
+  });
+#endif
+  return impls;
+}
 
-template <typename Impl>
-static void TestNegate(FileTest *t) {
+class P256NistzImplTest : public testing::TestWithParam<P256NistzImpl> {
+ protected:
+  const P256NistzImpl &impl() const { return GetParam(); }
+};
+
+INSTANTIATE_TEST_SUITE_P(All, P256NistzImplTest,
+                         testing::ValuesIn(AllP256NistzImpls()),
+                         [](const testing::TestParamInfo<P256NistzImpl> &params)
+                             -> std::string { return params.param.name; });
+
+static void TestNegate(FileTest *t, const P256NistzImpl &impl) {
   BN_ULONG a[P256_LIMBS], b[P256_LIMBS];
   ASSERT_TRUE(GetFieldElement(t, a, "A"));
   ASSERT_TRUE(GetFieldElement(t, b, "B"));
 
   // Test that -A = B.
   BN_ULONG ret[P256_LIMBS];
-  Impl::neg(ret, a);
+  impl.neg(ret, a);
   EXPECT_FIELD_ELEMENTS_EQUAL(b, ret);
 
   OPENSSL_memcpy(ret, a, sizeof(ret));
-  Impl::neg(ret, ret /* a */);
+  impl.neg(ret, ret /* a */);
   EXPECT_FIELD_ELEMENTS_EQUAL(b, ret);
 
   // Test that -B = A.
-  Impl::neg(ret, b);
+  impl.neg(ret, b);
   EXPECT_FIELD_ELEMENTS_EQUAL(a, ret);
 
   OPENSSL_memcpy(ret, b, sizeof(ret));
-  Impl::neg(ret, ret /* b */);
+  impl.neg(ret, ret /* b */);
   EXPECT_FIELD_ELEMENTS_EQUAL(a, ret);
 }
 
-template <typename Impl>
-static void TestMulMont(FileTest *t) {
+static void TestMulMont(FileTest *t, const P256NistzImpl &impl) {
   BN_ULONG a[P256_LIMBS], b[P256_LIMBS], result[P256_LIMBS];
   ASSERT_TRUE(GetFieldElement(t, a, "A"));
   ASSERT_TRUE(GetFieldElement(t, b, "B"));
   ASSERT_TRUE(GetFieldElement(t, result, "Result"));
 
   BN_ULONG ret[P256_LIMBS];
-  Impl::mul_mont(ret, a, b);
+  impl.mul_mont(ret, a, b);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
-  Impl::mul_mont(ret, b, a);
-  EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
-
-  OPENSSL_memcpy(ret, a, sizeof(ret));
-  Impl::mul_mont(ret, ret /* a */, b);
+  impl.mul_mont(ret, b, a);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   OPENSSL_memcpy(ret, a, sizeof(ret));
-  Impl::mul_mont(ret, b, ret);
+  impl.mul_mont(ret, ret /* a */, b);
+  EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
+
+  OPENSSL_memcpy(ret, a, sizeof(ret));
+  impl.mul_mont(ret, b, ret);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   OPENSSL_memcpy(ret, b, sizeof(ret));
-  Impl::mul_mont(ret, a, ret /* b */);
+  impl.mul_mont(ret, a, ret /* b */);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   OPENSSL_memcpy(ret, b, sizeof(ret));
-  Impl::mul_mont(ret, ret /* b */, a);
+  impl.mul_mont(ret, ret /* b */, a);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   if (OPENSSL_memcmp(a, b, sizeof(a)) == 0) {
-    Impl::sqr_mont(ret, a);
+    impl.sqr_mont(ret, a);
     EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
     OPENSSL_memcpy(ret, a, sizeof(ret));
-    Impl::sqr_mont(ret, ret /* a */);
+    impl.sqr_mont(ret, ret /* a */);
     EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
   }
 }
 
-template <typename Impl>
-void TestPointAdd(FileTest *t) {
+static void TestPointAdd(FileTest *t, const P256NistzImpl &impl) {
   P256_POINT a, b;
   P256_POINT_AFFINE result;
   ASSERT_TRUE(GetFieldElement(t, a.X, "A.X"));
@@ -482,26 +500,26 @@ void TestPointAdd(FileTest *t) {
   ASSERT_TRUE(GetFieldElement(t, result.Y, "Result.Y"));
 
   P256_POINT ret;
-  Impl::point_add(&ret, &a, &b);
+  impl.point_add(&ret, &a, &b);
   EXPECT_POINTS_EQUAL(&result, &ret);
 
-  Impl::point_add(&ret, &b, &a);
-  EXPECT_POINTS_EQUAL(&result, &ret);
-
-  OPENSSL_memcpy(&ret, &a, sizeof(ret));
-  Impl::point_add(&ret, &ret /* a */, &b);
+  impl.point_add(&ret, &b, &a);
   EXPECT_POINTS_EQUAL(&result, &ret);
 
   OPENSSL_memcpy(&ret, &a, sizeof(ret));
-  Impl::point_add(&ret, &b, &ret /* a */);
+  impl.point_add(&ret, &ret /* a */, &b);
+  EXPECT_POINTS_EQUAL(&result, &ret);
+
+  OPENSSL_memcpy(&ret, &a, sizeof(ret));
+  impl.point_add(&ret, &b, &ret /* a */);
   EXPECT_POINTS_EQUAL(&result, &ret);
 
   OPENSSL_memcpy(&ret, &b, sizeof(ret));
-  Impl::point_add(&ret, &a, &ret /* b */);
+  impl.point_add(&ret, &a, &ret /* b */);
   EXPECT_POINTS_EQUAL(&result, &ret);
 
   OPENSSL_memcpy(&ret, &b, sizeof(ret));
-  Impl::point_add(&ret, &ret /* b */, &a);
+  impl.point_add(&ret, &ret /* b */, &a);
   EXPECT_POINTS_EQUAL(&result, &ret);
 
   P256_POINT_AFFINE a_affine, b_affine, infinity;
@@ -513,33 +531,32 @@ void TestPointAdd(FileTest *t) {
   // point at infinity.
   if (OPENSSL_memcmp(&a_affine, &b_affine, sizeof(a_affine)) != 0 ||
       OPENSSL_memcmp(&a_affine, &infinity, sizeof(a_affine)) == 0) {
-    Impl::point_add_affine(&ret, &a, &b_affine);
+    impl.point_add_affine(&ret, &a, &b_affine);
     EXPECT_POINTS_EQUAL(&result, &ret);
 
     OPENSSL_memcpy(&ret, &a, sizeof(ret));
-    Impl::point_add_affine(&ret, &ret /* a */, &b_affine);
+    impl.point_add_affine(&ret, &ret /* a */, &b_affine);
     EXPECT_POINTS_EQUAL(&result, &ret);
 
-    Impl::point_add_affine(&ret, &b, &a_affine);
+    impl.point_add_affine(&ret, &b, &a_affine);
     EXPECT_POINTS_EQUAL(&result, &ret);
 
     OPENSSL_memcpy(&ret, &b, sizeof(ret));
-    Impl::point_add_affine(&ret, &ret /* b */, &a_affine);
+    impl.point_add_affine(&ret, &ret /* b */, &a_affine);
     EXPECT_POINTS_EQUAL(&result, &ret);
   }
 
   if (OPENSSL_memcmp(&a, &b, sizeof(a)) == 0) {
-    Impl::point_double(&ret, &a);
+    impl.point_double(&ret, &a);
     EXPECT_POINTS_EQUAL(&result, &ret);
 
     ret = a;
-    Impl::point_double(&ret, &ret /* a */);
+    impl.point_double(&ret, &ret /* a */);
     EXPECT_POINTS_EQUAL(&result, &ret);
   }
 }
 
-template <typename Impl>
-void TestOrdMulMont(FileTest *t) {
+static void TestOrdMulMont(FileTest *t, const P256NistzImpl &impl) {
   // This test works on scalars rather than field elements, but the
   // representation is the same.
   BN_ULONG a[P256_LIMBS], b[P256_LIMBS], result[P256_LIMBS];
@@ -548,70 +565,69 @@ void TestOrdMulMont(FileTest *t) {
   ASSERT_TRUE(GetFieldElement(t, result, "Result"));
 
   BN_ULONG ret[P256_LIMBS];
-  Impl::ord_mul_mont(ret, a, b);
+  impl.ord_mul_mont(ret, a, b);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
-  Impl::ord_mul_mont(ret, b, a);
-  EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
-
-  OPENSSL_memcpy(ret, a, sizeof(ret));
-  Impl::ord_mul_mont(ret, ret /* a */, b);
+  impl.ord_mul_mont(ret, b, a);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   OPENSSL_memcpy(ret, a, sizeof(ret));
-  Impl::ord_mul_mont(ret, b, ret);
+  impl.ord_mul_mont(ret, ret /* a */, b);
+  EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
+
+  OPENSSL_memcpy(ret, a, sizeof(ret));
+  impl.ord_mul_mont(ret, b, ret);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   OPENSSL_memcpy(ret, b, sizeof(ret));
-  Impl::ord_mul_mont(ret, a, ret /* b */);
+  impl.ord_mul_mont(ret, a, ret /* b */);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   OPENSSL_memcpy(ret, b, sizeof(ret));
-  Impl::ord_mul_mont(ret, ret /* b */, a);
+  impl.ord_mul_mont(ret, ret /* b */, a);
   EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
   if (OPENSSL_memcmp(a, b, sizeof(a)) == 0) {
-    Impl::ord_sqr_mont(ret, a, 1);
+    impl.ord_sqr_mont(ret, a, 1);
     EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
 
     OPENSSL_memcpy(ret, a, sizeof(ret));
-    Impl::ord_sqr_mont(ret, ret /* a */, 1);
+    impl.ord_sqr_mont(ret, ret /* a */, 1);
     EXPECT_FIELD_ELEMENTS_EQUAL(result, ret);
   }
 }
 
-TYPED_TEST(P256NistzImplTest, TestVectors) {
-  using Impl = TypeParam;
+TEST_P(P256NistzImplTest, TestVectors) {
   return FileTestGTest("crypto/fipsmodule/ec/p256-nistz_tests.txt",
                        [&](FileTest *t) {
-                         if (t->GetParameter() == "Negate") {
-                           TestNegate<Impl>(t);
-                         } else if (t->GetParameter() == "MulMont") {
-                           TestMulMont<Impl>(t);
-                         } else if (t->GetParameter() == "PointAdd") {
-                           TestPointAdd<Impl>(t);
-                         } else if (t->GetParameter() == "OrdMulMont") {
-                           TestOrdMulMont<Impl>(t);
-                         } else {
-                           FAIL() << "Unknown test type:" << t->GetParameter();
-                         }
-                       });
+    if (t->GetParameter() == "Negate") {
+      TestNegate(t, impl());
+    } else if (t->GetParameter() == "MulMont") {
+      TestMulMont(t, impl());
+    } else if (t->GetParameter() == "PointAdd") {
+      TestPointAdd(t, impl());
+    } else if (t->GetParameter() == "OrdMulMont") {
+      TestOrdMulMont(t, impl());
+    } else {
+      FAIL() << "Unknown test type:" << t->GetParameter();
+    }
+  });
 }
 
 // Instrument the functions covered in TestVectors for ABI checking.
-TYPED_TEST(P256NistzImplTest, ABI) {
+TEST_P(P256NistzImplTest, ABI) {
   BN_ULONG a[P256_LIMBS], b[P256_LIMBS], c[P256_LIMBS];
   OPENSSL_memset(a, 0x01, sizeof(a));
   // These functions are all branchless, so it is only necessary to
   // instrument one call each for ABI checking.
-  CHECK_ABI(TypeParam::neg, b, a);
-  CHECK_ABI(TypeParam::mul_mont, c, a, b);
-  CHECK_ABI(TypeParam::sqr_mont, c, a);
-  CHECK_ABI(TypeParam::ord_mul_mont, c, a, b);
+  CHECK_ABI(impl().neg, b, a);
+  CHECK_ABI(impl().mul_mont, c, a, b);
+  CHECK_ABI(impl().sqr_mont, c, a);
+  CHECK_ABI(impl().ord_mul_mont, c, a, b);
 
   // Check a few different loop counts.
-  CHECK_ABI(TypeParam::ord_sqr_mont, b, a, 1);
-  CHECK_ABI(TypeParam::ord_sqr_mont, b, a, 3);
+  CHECK_ABI(impl().ord_sqr_mont, b, a, 1);
+  CHECK_ABI(impl().ord_sqr_mont, b, a, 3);
 
   // Point addition has some special cases around infinity and doubling. Test
   // a few different scenarios.
@@ -639,16 +655,16 @@ TYPED_TEST(P256NistzImplTest, ABI) {
   };
 
   P256_POINT p;
-  CHECK_ABI(TypeParam::point_add, &p, &kA, &kB);
-  CHECK_ABI(TypeParam::point_add, &p, &kA, &kA);
+  CHECK_ABI(impl().point_add, &p, &kA, &kB);
+  CHECK_ABI(impl().point_add, &p, &kA, &kA);
   OPENSSL_memcpy(&p, &kA, sizeof(P256_POINT));
-  TypeParam::neg(p.Y, p.Y);
-  CHECK_ABI(TypeParam::point_add, &p, &kA, &p);  // A + -A
-  CHECK_ABI(TypeParam::point_add, &p, &kA, &kInfinity);
-  CHECK_ABI(TypeParam::point_add, &p, &kInfinity, &kA);
-  CHECK_ABI(TypeParam::point_add, &p, &kInfinity, &kInfinity);
-  CHECK_ABI(TypeParam::point_double, &p, &kA);
-  CHECK_ABI(TypeParam::point_double, &p, &kInfinity);
+  impl().neg(p.Y, p.Y);
+  CHECK_ABI(impl().point_add, &p, &kA, &p);  // A + -A
+  CHECK_ABI(impl().point_add, &p, &kA, &kInfinity);
+  CHECK_ABI(impl().point_add, &p, &kInfinity, &kA);
+  CHECK_ABI(impl().point_add, &p, &kInfinity, &kInfinity);
+  CHECK_ABI(impl().point_double, &p, &kA);
+  CHECK_ABI(impl().point_double, &p, &kInfinity);
 
   static const P256_POINT_AFFINE kC = {
       {TOBN(0x7e3ad339, 0xfb3fa5f0), TOBN(0x559d669d, 0xe3a047b2),
@@ -662,10 +678,10 @@ TYPED_TEST(P256NistzImplTest, ABI) {
       {TOBN(0, 0), TOBN(0, 0), TOBN(0, 0), TOBN(0, 0)},
   };
 
-  CHECK_ABI(TypeParam::point_add_affine, &p, &kA, &kC);
-  CHECK_ABI(TypeParam::point_add_affine, &p, &kA, &kInfinityAffine);
-  CHECK_ABI(TypeParam::point_add_affine, &p, &kInfinity, &kInfinityAffine);
-  CHECK_ABI(TypeParam::point_add_affine, &p, &kInfinity, &kC);
+  CHECK_ABI(impl().point_add_affine, &p, &kA, &kC);
+  CHECK_ABI(impl().point_add_affine, &p, &kA, &kInfinityAffine);
+  CHECK_ABI(impl().point_add_affine, &p, &kInfinity, &kInfinityAffine);
+  CHECK_ABI(impl().point_add_affine, &p, &kInfinity, &kC);
 }
 
 #endif

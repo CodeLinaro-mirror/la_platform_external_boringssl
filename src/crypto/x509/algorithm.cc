@@ -30,10 +30,8 @@ using namespace bssl;
 // signature algorithm into a small enum and convert them to/from `EVP_PKEY_CTX`
 // and `X509_ALGOR`.
 
-namespace {
-
 // Restrict the digests that are allowed in X509 certificates
-int x509_digest_nid_ok(const int digest_nid) {
+static int x509_digest_nid_ok(const int digest_nid) {
   switch (digest_nid) {
     case NID_md4:
     case NID_md5:
@@ -41,8 +39,6 @@ int x509_digest_nid_ok(const int digest_nid) {
   }
   return 1;
 }
-
-}  // namespace
 
 int bssl::x509_digest_sign_algorithm(EVP_MD_CTX *ctx, X509_ALGOR *algor) {
   EVP_PKEY *pkey = EVP_PKEY_CTX_get0_pkey(ctx->pctx);

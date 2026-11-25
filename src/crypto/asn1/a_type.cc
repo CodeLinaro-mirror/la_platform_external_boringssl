@@ -147,23 +147,24 @@ int ASN1_TYPE_set1(ASN1_TYPE *a, int type, const void *value) {
   return 1;
 }
 
+// Returns 0 if they are equal, != 0 otherwise.
 int ASN1_TYPE_cmp(const ASN1_TYPE *a, const ASN1_TYPE *b) {
-  if (a == nullptr || b == nullptr) {
-    // NULL sorts before any non-NULL value. Two NULLs are equal.
-    return (a != nullptr) - (b != nullptr);
-  }
+  int result = -1;
 
-  if (a->type != b->type) {
-    return a->type < b->type ? -1 : 1;
+  if (!a || !b || a->type != b->type) {
+    return -1;
   }
 
   switch (a->type) {
     case V_ASN1_OBJECT:
-      return OBJ_cmp(a->value.object, b->value.object);
+      result = OBJ_cmp(a->value.object, b->value.object);
+      break;
     case V_ASN1_NULL:
-      return 0;  // They do not have content.
+      result = 0;  // They do not have content.
+      break;
     case V_ASN1_BOOLEAN:
-      return a->value.boolean - b->value.boolean;
+      result = a->value.boolean - b->value.boolean;
+      break;
     case V_ASN1_INTEGER:
     case V_ASN1_ENUMERATED:
     case V_ASN1_BIT_STRING:
@@ -185,8 +186,11 @@ int ASN1_TYPE_cmp(const ASN1_TYPE *a, const ASN1_TYPE *b) {
     case V_ASN1_UTF8STRING:
     case V_ASN1_OTHER:
     default:
-      return ASN1_STRING_cmp(a->value.asn1_string, b->value.asn1_string);
+      result = ASN1_STRING_cmp(a->value.asn1_string, b->value.asn1_string);
+      break;
   }
+
+  return result;
 }
 
 int bssl::asn1_parse_any(CBS *cbs, ASN1_TYPE *out) {
@@ -328,7 +332,9 @@ int bssl::asn1_parse_any_as_string(CBS *cbs, ASN1_STRING *out) {
     case CBS_ASN1_UTF8STRING:
       return asn1_parse_utf8_string(&elem, out, tag);
     case CBS_ASN1_UTCTIME:
-      return asn1_parse_utc_time(&elem, out, tag, /*allow_timezone_offset=*/0);
+      // TODO(crbug.com/42290221): Reject timezone offsets here. We have no
+      // known cases where UTCTime inside ANY needs accept invalid timezones.
+      return asn1_parse_utc_time(&elem, out, tag, /*allow_timezone_offset=*/1);
     case CBS_ASN1_GENERALIZEDTIME:
       return asn1_parse_generalized_time(&elem, out, tag);
     case CBS_ASN1_OCTETSTRING:
