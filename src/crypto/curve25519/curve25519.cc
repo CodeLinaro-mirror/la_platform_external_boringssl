@@ -44,11 +44,9 @@
 
 using namespace bssl;
 
-namespace {
-
 // Low-level intrinsic operations
 
-uint64_t load_3(const uint8_t *in) {
+static uint64_t load_3(const uint8_t *in) {
   uint64_t result;
   result = (uint64_t)in[0];
   result |= ((uint64_t)in[1]) << 8;
@@ -56,7 +54,7 @@ uint64_t load_3(const uint8_t *in) {
   return result;
 }
 
-uint64_t load_4(const uint8_t *in) {
+static uint64_t load_4(const uint8_t *in) {
   uint64_t result;
   result = (uint64_t)in[0];
   result |= ((uint64_t)in[1]) << 8;
@@ -153,7 +151,7 @@ typedef uint32_t fe_limb_t;
 static_assert(sizeof(fe) == sizeof(fe_limb_t) * FE_NUM_LIMBS,
               "fe_limb_t[FE_NUM_LIMBS] is inconsistent with fe");
 
-void fe_frombytes_strict(fe *h, const uint8_t s[32]) {
+static void fe_frombytes_strict(fe *h, const uint8_t s[32]) {
   // `fiat_25519_from_bytes` requires the top-most bit be clear.
   declassify_assert((s[31] & 0x80) == 0);
   fiat_25519_from_bytes(h->v, s);
@@ -162,37 +160,37 @@ void fe_frombytes_strict(fe *h, const uint8_t s[32]) {
 
 // fe_frombytes takes in a little-endian 255-bit number and decodes it into an
 // `fe`.
-void fe_frombytes(fe *h, const uint8_t s[32]) {
+static void fe_frombytes(fe *h, const uint8_t s[32]) {
   uint8_t s_copy[32];
   OPENSSL_memcpy(s_copy, s, 32);
   s_copy[31] &= 0x7f;
   fe_frombytes_strict(h, s_copy);
 }
 
-void fe_tobytes(uint8_t s[32], const fe *f) {
+static void fe_tobytes(uint8_t s[32], const fe *f) {
   assert_fe(f->v);
   fiat_25519_to_bytes(s, f->v);
 }
 
 // h = 0
-void fe_0(fe *h) { OPENSSL_memset(h, 0, sizeof(fe)); }
+static void fe_0(fe *h) { OPENSSL_memset(h, 0, sizeof(fe)); }
 
-void fe_loose_0(fe_loose *h) { OPENSSL_memset(h, 0, sizeof(fe_loose)); }
+static void fe_loose_0(fe_loose *h) { OPENSSL_memset(h, 0, sizeof(fe_loose)); }
 
 // h = 1
-void fe_1(fe *h) {
+static void fe_1(fe *h) {
   OPENSSL_memset(h, 0, sizeof(fe));
   h->v[0] = 1;
 }
 
-void fe_loose_1(fe_loose *h) {
+static void fe_loose_1(fe_loose *h) {
   OPENSSL_memset(h, 0, sizeof(fe_loose));
   h->v[0] = 1;
 }
 
 // h = f + g
 // Can overlap h with f or g.
-void fe_add(fe_loose *h, const fe *f, const fe *g) {
+static void fe_add(fe_loose *h, const fe *f, const fe *g) {
   assert_fe(f->v);
   assert_fe(g->v);
   fiat_25519_add(h->v, f->v, g->v);
@@ -201,58 +199,59 @@ void fe_add(fe_loose *h, const fe *f, const fe *g) {
 
 // h = f - g
 // Can overlap h with f or g.
-void fe_sub(fe_loose *h, const fe *f, const fe *g) {
+static void fe_sub(fe_loose *h, const fe *f, const fe *g) {
   assert_fe(f->v);
   assert_fe(g->v);
   fiat_25519_sub(h->v, f->v, g->v);
   assert_fe_loose(h->v);
 }
 
-void fe_carry(fe *h, const fe_loose *f) {
+static void fe_carry(fe *h, const fe_loose *f) {
   assert_fe_loose(f->v);
   fiat_25519_carry(h->v, f->v);
   assert_fe(h->v);
 }
 
-void fe_mul_impl(fe_limb_t out[FE_NUM_LIMBS], const fe_limb_t in1[FE_NUM_LIMBS],
-                 const fe_limb_t in2[FE_NUM_LIMBS]) {
+static void fe_mul_impl(fe_limb_t out[FE_NUM_LIMBS],
+                        const fe_limb_t in1[FE_NUM_LIMBS],
+                        const fe_limb_t in2[FE_NUM_LIMBS]) {
   assert_fe_loose(in1);
   assert_fe_loose(in2);
   fiat_25519_carry_mul(out, in1, in2);
   assert_fe(out);
 }
 
-void fe_mul_ltt(fe_loose *h, const fe *f, const fe *g) {
+static void fe_mul_ltt(fe_loose *h, const fe *f, const fe *g) {
   fe_mul_impl(h->v, f->v, g->v);
 }
 
-void fe_mul_llt(fe_loose *h, const fe_loose *f, const fe *g) {
+static void fe_mul_llt(fe_loose *h, const fe_loose *f, const fe *g) {
   fe_mul_impl(h->v, f->v, g->v);
 }
 
-void fe_mul_ttt(fe *h, const fe *f, const fe *g) {
+static void fe_mul_ttt(fe *h, const fe *f, const fe *g) {
   fe_mul_impl(h->v, f->v, g->v);
 }
 
-void fe_mul_tlt(fe *h, const fe_loose *f, const fe *g) {
+static void fe_mul_tlt(fe *h, const fe_loose *f, const fe *g) {
   fe_mul_impl(h->v, f->v, g->v);
 }
 
-void fe_mul_ttl(fe *h, const fe *f, const fe_loose *g) {
+static void fe_mul_ttl(fe *h, const fe *f, const fe_loose *g) {
   fe_mul_impl(h->v, f->v, g->v);
 }
 
-void fe_mul_tll(fe *h, const fe_loose *f, const fe_loose *g) {
+static void fe_mul_tll(fe *h, const fe_loose *f, const fe_loose *g) {
   fe_mul_impl(h->v, f->v, g->v);
 }
 
-void fe_sq_tl(fe *h, const fe_loose *f) {
+static void fe_sq_tl(fe *h, const fe_loose *f) {
   assert_fe_loose(f->v);
   fiat_25519_carry_square(h->v, f->v);
   assert_fe(h->v);
 }
 
-void fe_sq_tt(fe *h, const fe *f) {
+static void fe_sq_tt(fe *h, const fe *f) {
   assert_fe_loose(f->v);
   fiat_25519_carry_square(h->v, f->v);
   assert_fe(h->v);
@@ -262,7 +261,7 @@ void fe_sq_tt(fe *h, const fe *f) {
 // replace (f,g) with (f,g) if b == 0.
 //
 // Preconditions: b in {0,1}.
-void fe_cswap(fe *f, fe *g, fe_limb_t b) {
+static void fe_cswap(fe *f, fe *g, fe_limb_t b) {
   b = 0 - b;
   for (unsigned i = 0; i < FE_NUM_LIMBS; i++) {
     fe_limb_t x = f->v[i] ^ g->v[i];
@@ -272,14 +271,14 @@ void fe_cswap(fe *f, fe *g, fe_limb_t b) {
   }
 }
 
-void fe_mul121666(fe *h, const fe_loose *f) {
+static void fe_mul121666(fe *h, const fe_loose *f) {
   assert_fe_loose(f->v);
   fiat_25519_carry_scmul_121666(h->v, f->v);
   assert_fe(h->v);
 }
 
 // h = -f
-void fe_neg(fe_loose *h, const fe *f) {
+static void fe_neg(fe_loose *h, const fe *f) {
   assert_fe(f->v);
   fiat_25519_opp(h->v, f->v);
   assert_fe_loose(h->v);
@@ -289,7 +288,7 @@ void fe_neg(fe_loose *h, const fe *f) {
 // replace (f,g) with (f,g) if b == 0.
 //
 // Preconditions: b in {0,1}.
-void fe_cmov(fe_loose *f, const fe_loose *g, fe_limb_t b) {
+static void fe_cmov(fe_loose *f, const fe_loose *g, fe_limb_t b) {
   // Silence an unused function warning. `fiat_25519_selectznz` isn't quite the
   // calling convention the rest of this code wants, so implement it by hand.
   //
@@ -308,7 +307,7 @@ void fe_cmov(fe_loose *f, const fe_loose *g, fe_limb_t b) {
 // replace (f,g) with (f,g) if b == 0.
 //
 // Preconditions: b in {0,1}.
-void fe_cmov(fe *f, const fe *g, fe_limb_t b) {
+static void fe_cmov(fe *f, const fe *g, fe_limb_t b) {
   b = 0 - b;
   for (unsigned i = 0; i < FE_NUM_LIMBS; i++) {
     fe_limb_t x = f->v[i] ^ g->v[i];
@@ -318,14 +317,14 @@ void fe_cmov(fe *f, const fe *g, fe_limb_t b) {
 }
 
 // h = f
-void fe_copy(fe *h, const fe *f) { OPENSSL_memmove(h, f, sizeof(fe)); }
+static void fe_copy(fe *h, const fe *f) { OPENSSL_memmove(h, f, sizeof(fe)); }
 
-void fe_copy_lt(fe_loose *h, const fe *f) {
+static void fe_copy_lt(fe_loose *h, const fe *f) {
   static_assert(sizeof(fe_loose) == sizeof(fe), "fe and fe_loose mismatch");
   OPENSSL_memmove(h, f, sizeof(fe));
 }
 
-void fe_loose_invert(fe *out, const fe_loose *z) {
+static void fe_loose_invert(fe *out, const fe_loose *z) {
   fe t0;
   fe t1;
   fe t2;
@@ -383,7 +382,7 @@ void fe_loose_invert(fe *out, const fe_loose *z) {
   fe_mul_ttt(out, &t1, &t0);
 }
 
-void fe_invert(fe *out, const fe *z) {
+static void fe_invert(fe *out, const fe *z) {
   fe_loose l;
   fe_copy_lt(&l, z);
   fe_loose_invert(out, &l);
@@ -391,7 +390,7 @@ void fe_invert(fe *out, const fe *z) {
 
 // return 0 if f == 0
 // return 1 if f != 0
-int fe_isnonzero(const fe *f) {
+static int fe_isnonzero(const fe *f) {
   uint8_t s[32];
   fe_tobytes(s, f);
 
@@ -401,7 +400,7 @@ int fe_isnonzero(const fe *f) {
 
 // return 0 if f == 0
 // return 1 if f != 0
-int fe_isnonzero(const fe_loose *f) {
+static int fe_isnonzero(const fe_loose *f) {
   fe tight;
   fe_carry(&tight, f);
   return fe_isnonzero(&tight);
@@ -409,13 +408,13 @@ int fe_isnonzero(const fe_loose *f) {
 
 // return 1 if f is in {1,3,5,...,q-2}
 // return 0 if f is in {0,2,4,...,q-1}
-int fe_isnegative(const fe *f) {
+static int fe_isnegative(const fe *f) {
   uint8_t s[32];
   fe_tobytes(s, f);
   return s[0] & 1;
 }
 
-void fe_sq2_tt(fe *h, const fe *f) {
+static void fe_sq2_tt(fe *h, const fe *f) {
   // h = f²
   fe_sq_tt(h, f);
 
@@ -425,7 +424,7 @@ void fe_sq2_tt(fe *h, const fe *f) {
   fe_carry(h, &tmp);
 }
 
-void fe_pow22523(fe *out, const fe *z) {
+static void fe_pow22523(fe *out, const fe *z) {
   fe t0;
   fe t1;
   fe t2;
@@ -482,7 +481,6 @@ void fe_pow22523(fe *out, const fe *z) {
   fe_mul_ttt(out, &t0, z);
 }
 
-}  // namespace
 
 // Group operations.
 
@@ -498,9 +496,7 @@ void bssl::x25519_ge_tobytes(uint8_t s[32], const ge_p2 *h) {
   s[31] ^= fe_isnegative(&x) << 7;
 }
 
-namespace {
-
-void ge_p3_tobytes(uint8_t s[32], const ge_p3 *h) {
+static void ge_p3_tobytes(uint8_t s[32], const ge_p3 *h) {
   fe recip;
   fe x;
   fe y;
@@ -511,8 +507,6 @@ void ge_p3_tobytes(uint8_t s[32], const ge_p3 *h) {
   fe_tobytes(s, &y);
   s[31] ^= fe_isnegative(&x) << 7;
 }
-
-}  // namespace
 
 int bssl::x25519_ge_frombytes_vartime(ge_p3 *h, const uint8_t s[32]) {
   fe u;
@@ -554,42 +548,38 @@ int bssl::x25519_ge_frombytes_vartime(ge_p3 *h, const uint8_t s[32]) {
   return 1;
 }
 
-namespace {
-
-void ge_p2_0(ge_p2 *h) {
+static void ge_p2_0(ge_p2 *h) {
   fe_0(&h->X);
   fe_1(&h->Y);
   fe_1(&h->Z);
 }
 
-void ge_p3_0(ge_p3 *h) {
+static void ge_p3_0(ge_p3 *h) {
   fe_0(&h->X);
   fe_1(&h->Y);
   fe_1(&h->Z);
   fe_0(&h->T);
 }
 
-void ge_cached_0(ge_cached *h) {
+static void ge_cached_0(ge_cached *h) {
   fe_loose_1(&h->YplusX);
   fe_loose_1(&h->YminusX);
   fe_loose_1(&h->Z);
   fe_loose_0(&h->T2d);
 }
 
-void ge_precomp_0(ge_precomp *h) {
+static void ge_precomp_0(ge_precomp *h) {
   fe_loose_1(&h->yplusx);
   fe_loose_1(&h->yminusx);
   fe_loose_0(&h->xy2d);
 }
 
 // r = p
-void ge_p3_to_p2(ge_p2 *r, const ge_p3 *p) {
+static void ge_p3_to_p2(ge_p2 *r, const ge_p3 *p) {
   fe_copy(&r->X, &p->X);
   fe_copy(&r->Y, &p->Y);
   fe_copy(&r->Z, &p->Z);
 }
-
-}  // namespace
 
 // r = p
 void bssl::x25519_ge_p3_to_cached(ge_cached *r, const ge_p3 *p) {
@@ -614,17 +604,15 @@ void bssl::x25519_ge_p1p1_to_p3(ge_p3 *r, const ge_p1p1 *p) {
   fe_mul_tll(&r->T, &p->X, &p->Y);
 }
 
-namespace {
-
 // r = p
-void ge_p1p1_to_cached(ge_cached *r, const ge_p1p1 *p) {
+static void ge_p1p1_to_cached(ge_cached *r, const ge_p1p1 *p) {
   ge_p3 t;
   x25519_ge_p1p1_to_p3(&t, p);
   x25519_ge_p3_to_cached(r, &t);
 }
 
 // r = 2 * p
-void ge_p2_dbl(ge_p1p1 *r, const ge_p2 *p) {
+static void ge_p2_dbl(ge_p1p1 *r, const ge_p2 *p) {
   fe trX, trZ, trT;
   fe t0;
 
@@ -643,14 +631,14 @@ void ge_p2_dbl(ge_p1p1 *r, const ge_p2 *p) {
 }
 
 // r = 2 * p
-void ge_p3_dbl(ge_p1p1 *r, const ge_p3 *p) {
+static void ge_p3_dbl(ge_p1p1 *r, const ge_p3 *p) {
   ge_p2 q;
   ge_p3_to_p2(&q, p);
   ge_p2_dbl(r, &q);
 }
 
 // r = p + q
-void ge_madd(ge_p1p1 *r, const ge_p3 *p, const ge_precomp *q) {
+static void ge_madd(ge_p1p1 *r, const ge_p3 *p, const ge_precomp *q) {
   fe trY, trZ, trT;
 
   fe_add(&r->X, &p->Y, &p->X);
@@ -667,7 +655,7 @@ void ge_madd(ge_p1p1 *r, const ge_p3 *p, const ge_precomp *q) {
 }
 
 // r = p - q
-void ge_msub(ge_p1p1 *r, const ge_p3 *p, const ge_precomp *q) {
+static void ge_msub(ge_p1p1 *r, const ge_p3 *p, const ge_precomp *q) {
   fe trY, trZ, trT;
 
   fe_add(&r->X, &p->Y, &p->X);
@@ -682,8 +670,6 @@ void ge_msub(ge_p1p1 *r, const ge_p3 *p, const ge_precomp *q) {
   fe_sub(&r->Z, &trZ, &trT);
   fe_add(&r->T, &trZ, &trT);
 }
-
-}  // namespace
 
 // r = p + q
 void bssl::x25519_ge_add(ge_p1p1 *r, const ge_p3 *p, const ge_cached *q) {
@@ -721,15 +707,11 @@ void bssl::x25519_ge_sub(ge_p1p1 *r, const ge_p3 *p, const ge_cached *q) {
   fe_add(&r->T, &trZ, &trT);
 }
 
-namespace {
-
-void cmov(ge_precomp *t, const ge_precomp *u, uint8_t b) {
+static void cmov(ge_precomp *t, const ge_precomp *u, uint8_t b) {
   fe_cmov(&t->yplusx, &u->yplusx, b);
   fe_cmov(&t->yminusx, &u->yminusx, b);
   fe_cmov(&t->xy2d, &u->xy2d, b);
 }
-
-}  // namespace
 
 void bssl::x25519_ge_scalarmult_small_precomp(
     ge_p3 *h, const uint8_t a[32], const uint8_t precomp_table[15 * 2 * 32]) {
@@ -793,9 +775,7 @@ void bssl::x25519_ge_scalarmult_base(ge_p3 *h, const uint8_t a[32]) {
 
 #else
 
-namespace {
-
-void table_select(ge_precomp *t, const int pos, const signed char b) {
+static void table_select(ge_precomp *t, const int pos, const signed char b) {
   uint8_t bnegative = constant_time_msb_w(b);
   uint8_t babs = b - ((bnegative & b) << 1);
 
@@ -828,8 +808,6 @@ void table_select(ge_precomp *t, const int pos, const signed char b) {
   fe_neg(&minust.xy2d, &xy2d);
   cmov(t, &minust, bnegative >> 7);
 }
-
-}  // namespace
 
 // h = a * B
 // where a = a[0]+256*a[1]+...+256^31 a[31]
@@ -899,16 +877,12 @@ void bssl::x25519_ge_scalarmult_base(ge_p3 *h, const uint8_t a[32]) {
 
 #endif
 
-namespace {
-
-void cmov_cached(ge_cached *t, ge_cached *u, uint8_t b) {
+static void cmov_cached(ge_cached *t, ge_cached *u, uint8_t b) {
   fe_cmov(&t->YplusX, &u->YplusX, b);
   fe_cmov(&t->YminusX, &u->YminusX, b);
   fe_cmov(&t->Z, &u->Z, b);
   fe_cmov(&t->T2d, &u->T2d, b);
 }
-
-}  // namespace
 
 // r = scalar * A.
 // where a = a[0]+256*a[1]+...+256^31 a[31].
@@ -965,9 +939,7 @@ void bssl::x25519_ge_scalarmult(ge_p2 *r, const uint8_t *scalar,
   }
 }
 
-namespace {
-
-void slide(signed char *r, const uint8_t *a) {
+static void slide(signed char *r, const uint8_t *a) {
   int i;
   int b;
   int k;
@@ -1005,8 +977,8 @@ void slide(signed char *r, const uint8_t *a) {
 // where a = a[0]+256*a[1]+...+256^31 a[31].
 // and b = b[0]+256*b[1]+...+256^31 b[31].
 // B is the Ed25519 base point (x,4/5) with x positive.
-void ge_double_scalarmult_vartime(ge_p2 *r, const uint8_t *a, const ge_p3 *A,
-                                  const uint8_t *b) {
+static void ge_double_scalarmult_vartime(ge_p2 *r, const uint8_t *a,
+                                         const ge_p3 *A, const uint8_t *b) {
   signed char aslide[256];
   signed char bslide[256];
   ge_cached Ai[8];  // A,3A,5A,7A,9A,11A,13A,15A
@@ -1076,9 +1048,9 @@ void ge_double_scalarmult_vartime(ge_p2 *r, const uint8_t *a, const ge_p3 *A,
 
 // int64_lshift21 returns `a << 21` but is defined when shifting bits into the
 // sign bit. This works around a language flaw in C.
-int64_t int64_lshift21(int64_t a) { return (int64_t)((uint64_t)a << 21); }
-
-}  // namespace
+static int64_t int64_lshift21(int64_t a) {
+  return (int64_t)((uint64_t)a << 21);
+}
 
 // The set of scalars is \Z/l
 // where l = 2^252 + 27742317777372353535851937790883648493.
@@ -1431,10 +1403,8 @@ void bssl::x25519_sc_reduce(uint8_t s[64]) {
 // Output:
 //   s[0]+256*s[1]+...+256^31*s[31] = (ab+c) mod l
 //   where l = 2^252 + 27742317777372353535851937790883648493.
-namespace {
-
-void sc_muladd(uint8_t *s, const uint8_t *a, const uint8_t *b,
-               const uint8_t *c) {
+static void sc_muladd(uint8_t *s, const uint8_t *a, const uint8_t *b,
+                      const uint8_t *c) {
   int64_t a0 = 2097151 & load_3(a);
   int64_t a1 = 2097151 & (load_4(a + 2) >> 5);
   int64_t a2 = 2097151 & (load_3(a + 5) >> 2);
@@ -1914,19 +1884,15 @@ void sc_muladd(uint8_t *s, const uint8_t *a, const uint8_t *b,
   s[31] = s11 >> 17;
 }
 
-}  // namespace
-
 void ED25519_keypair(uint8_t out_public_key[32], uint8_t out_private_key[64]) {
   uint8_t seed[32];
   RAND_bytes(seed, 32);
   ED25519_keypair_from_seed(out_public_key, out_private_key, seed);
 }
 
-namespace {
-
-int ed25519_sign(uint8_t out_sig[64], const uint8_t *hash_prefix,
-                 size_t hash_prefix_len, const uint8_t *message,
-                 size_t message_len, const uint8_t private_key[64]) {
+static int ed25519_sign(uint8_t out_sig[64], const uint8_t *hash_prefix,
+                        size_t hash_prefix_len, const uint8_t *message,
+                        size_t message_len, const uint8_t private_key[64]) {
   uint8_t az[SHA512_DIGEST_LENGTH];
   SHA512(private_key, 32, az);
 
@@ -1963,9 +1929,10 @@ int ed25519_sign(uint8_t out_sig[64], const uint8_t *hash_prefix,
   return 1;
 }
 
-int ed25519_verify(const uint8_t *hash_prefix, size_t hash_prefix_len,
-                   const uint8_t *message, size_t message_len,
-                   const uint8_t signature[64], const uint8_t public_key[32]) {
+static int ed25519_verify(const uint8_t *hash_prefix, size_t hash_prefix_len,
+                          const uint8_t *message, size_t message_len,
+                          const uint8_t signature[64],
+                          const uint8_t public_key[32]) {
   ge_p3 A;
   if ((signature[63] & 224) != 0 ||
       !x25519_ge_frombytes_vartime(&A, public_key)) {
@@ -2026,8 +1993,6 @@ int ed25519_verify(const uint8_t *hash_prefix, size_t hash_prefix_len,
   return CRYPTO_memcmp(rcheck, rcopy, sizeof(rcheck)) == 0;
 }
 
-}  // namespace
-
 int ED25519_sign(uint8_t out_sig[64], const uint8_t *message,
                  size_t message_len, const uint8_t private_key[64]) {
   // NOTE: The documentation on this function says that it returns zero on
@@ -2048,13 +2013,11 @@ int ED25519_verify(const uint8_t *message, size_t message_len,
 #define ED25519_MAX_CONTEXT 255
 #define ED25519_MAX_HASH_PREFIX (32 + 1 + 1 + ED25519_MAX_CONTEXT)
 
-namespace {
-
 // ed25519_build_hash_prefix implements the `dom2` function from
 // https://datatracker.ietf.org/doc/html/rfc8032#section-2
-int ed25519_build_hash_prefix(uint8_t out_hash_prefix[ED25519_MAX_HASH_PREFIX],
-                              size_t *out_hash_prefix_len,
-                              const uint8_t *context, size_t context_len) {
+static int ed25519_build_hash_prefix(
+    uint8_t out_hash_prefix[ED25519_MAX_HASH_PREFIX],
+    size_t *out_hash_prefix_len, const uint8_t *context, size_t context_len) {
   if (context_len > ED25519_MAX_CONTEXT) {
     return 0;
   }
@@ -2066,8 +2029,6 @@ int ed25519_build_hash_prefix(uint8_t out_hash_prefix[ED25519_MAX_HASH_PREFIX],
   *out_hash_prefix_len = 32 + 1 + 1 + context_len;
   return 1;
 }
-
-}  // namespace
 
 int ED25519_sign_prehashed(uint8_t out_sig[64], const uint8_t *context,
                            size_t context_len,
@@ -2125,10 +2086,9 @@ void ED25519_keypair_from_seed(uint8_t out_public_key[32],
 }
 
 
-namespace {
-
-void x25519_scalar_mult_generic(uint8_t out[32], const uint8_t scalar[32],
-                                const uint8_t point[32]) {
+static void x25519_scalar_mult_generic(uint8_t out[32],
+                                       const uint8_t scalar[32],
+                                       const uint8_t point[32]) {
   fe x1, x2, z2, x3, z3, tmp0, tmp1;
   fe_loose x2l, z2l, x3l, tmp0l, tmp1l;
 
@@ -2210,8 +2170,8 @@ void x25519_scalar_mult_generic(uint8_t out[32], const uint8_t scalar[32],
   fe_tobytes(out, &x2);
 }
 
-void x25519_scalar_mult(uint8_t out[32], const uint8_t scalar[32],
-                        const uint8_t point[32]) {
+static void x25519_scalar_mult(uint8_t out[32], const uint8_t scalar[32],
+                               const uint8_t point[32]) {
 #if defined(BORINGSSL_X25519_NEON)
   if (CRYPTO_is_NEON_capable()) {
     x25519_NEON(out, scalar, point);
@@ -2227,8 +2187,6 @@ void x25519_scalar_mult(uint8_t out[32], const uint8_t scalar[32],
 
   x25519_scalar_mult_generic(out, scalar, point);
 }
-
-}  // namespace
 
 void X25519_keypair(uint8_t out_public_value[32], uint8_t out_private_key[32]) {
   RAND_bytes(out_private_key, 32);
@@ -2293,9 +2251,7 @@ void X25519_public_from_private(uint8_t out_public_value[32],
   CONSTTIME_DECLASSIFY(out_public_value, 32);
 }
 
-namespace {
-
-void fe_from_limb(fe *h, fe_limb_t val) {
+static void fe_from_limb(fe *h, fe_limb_t val) {
   fe_0(h);
   h->v[0] = val;
   assert_fe(h->v);
@@ -2306,8 +2262,8 @@ void fe_from_limb(fe *h, fe_limb_t val) {
 //
 // It maps a field element u to a Montgomery point (xn / xd, y / 1) on the curve
 // t^2 = s^3 + 486662*s^2 + s.
-void map_to_curve_elligator2(fe *out_xMn, fe *out_xMd, fe *out_yMn,
-                             const fe *u) {
+static void map_to_curve_elligator2(fe *out_xMn, fe *out_xMd, fe *out_yMn,
+                                    const fe *u) {
   fe one, J_fe, c2_fe;
   fe_1(&one);
   fe_from_limb(&J_fe, 486662);
@@ -2462,8 +2418,6 @@ void map_to_curve_elligator2(fe *out_xMn, fe *out_xMd, fe *out_yMn,
   fe_carry(out_xMd, &xd_loose);
   fe_copy(out_yMn, &y);
 }
-
-}  // namespace
 
 void bssl::map_to_curve_curve25519_elligator2(uint8_t out_qx[32],
                                               uint8_t out_qy[32],

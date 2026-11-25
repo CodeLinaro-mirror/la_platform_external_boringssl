@@ -43,11 +43,9 @@ namespace mlkem {
 namespace {
 
 namespace fips {
-
 void ensure_keygen_self_test();
 void ensure_encap_self_test();
 void ensure_decap_self_test();
-
 }  // namespace fips
 
 // See
@@ -222,7 +220,7 @@ inline uint16_t reduce_once(uint16_t x) {
   // selects with the same condition into a branch instead of CMOV/CSEL. This
   // condition does not occur in ML-KEM, so omitting it seems to be safe so far,
   // but see `scalar_centered_binomial_distribution_eta_2_with_prf`.
-  return subtracted + (mask & kPrime);
+  return (mask & x) | (~mask & subtracted);
 }
 
 // reduce_partial returns a number equivalent to x mod kPrime. The output is
@@ -1551,7 +1549,6 @@ void ensure_encap_self_test() {}
 void ensure_decap_self_test() {}
 
 #endif
-
 }  // namespace fips
 
 }  // namespace
@@ -1574,8 +1571,8 @@ bcm_status bssl::BCM_mlkem768_check_fips(
 
   uint8_t shared_secret2[MLKEM_SHARED_SECRET_BYTES];
   mlkem::mlkem_decap_no_self_test(shared_secret2, ciphertext, priv);
-  if (constant_time_declassify_int(CRYPTO_memcmp(shared_secret, shared_secret2,
-                                                 sizeof(shared_secret)) != 0)) {
+  if (CRYPTO_memcmp(shared_secret, shared_secret2, sizeof(shared_secret)) !=
+      0) {
     return bcm_status::failure;
   }
   return bcm_status::approved;
@@ -1638,8 +1635,8 @@ bcm_status bssl::BCM_mlkem1024_check_fips(
 
   uint8_t shared_secret2[MLKEM_SHARED_SECRET_BYTES];
   mlkem::mlkem_decap_no_self_test(shared_secret2, ciphertext, priv);
-  if (constant_time_declassify_int(CRYPTO_memcmp(shared_secret, shared_secret2,
-                                                 sizeof(shared_secret)) != 0)) {
+  if (CRYPTO_memcmp(shared_secret, shared_secret2, sizeof(shared_secret)) !=
+      0) {
     return bcm_status::failure;
   }
   return bcm_status::approved;

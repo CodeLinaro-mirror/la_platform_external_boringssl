@@ -62,16 +62,10 @@ bool X509NameAttribute::ValueAsString(std::string *out) const {
 
 bool X509NameAttribute::ValueAsStringWithUnsafeOptions(
     PrintableStringHandling printable_string_handling, std::string *out) const {
-  if (value_tag == CBS_ASN1_PRINTABLESTRING) {
-    switch (printable_string_handling) {
-      case PrintableStringHandling::kDefault:
-        break;
-      case PrintableStringHandling::kAllowASCII:
-        return der::ParseIA5String(value, out);
-      case PrintableStringHandling::kAsUTF8Hack:
-        *out = BytesAsStringView(value);
-        return true;
-    }
+  if (printable_string_handling == PrintableStringHandling::kAsUTF8Hack &&
+      value_tag == CBS_ASN1_PRINTABLESTRING) {
+    *out = BytesAsStringView(value);
+    return true;
   }
   return ValueAsString(out);
 }
@@ -141,11 +135,11 @@ bool X509NameAttribute::AsRFC2253String(std::string *out) const {
         value_string += "\\ ";
       } else if (c == ',' || c == '+' || c == '"' || c == '\\' || c == '<' ||
                  c == '>' || c == ';') {
-        value_string += '\\';
+        value_string += "\\";
         value_string += c;
       } else if (c < 32 || c > 126) {
         nonprintable = true;
-        value_string += '\\' + bssl::string_util::HexEncode(Span(&c, 1));
+        value_string += "\\" + bssl::string_util::HexEncode(Span(&c, 1));
       } else {
         value_string += c;
       }
@@ -154,11 +148,11 @@ bool X509NameAttribute::AsRFC2253String(std::string *out) const {
     // If we have non-printable characters in a TeletexString, we hex encode
     // since we don't handle Teletex control codes.
     if (nonprintable && value_tag == CBS_ASN1_T61STRING) {
-      value_string = '#' + bssl::string_util::HexEncode(value);
+      value_string = "#" + bssl::string_util::HexEncode(value);
     }
   }
 
-  *out = type_string + '=' + value_string;
+  *out = type_string + "=" + value_string;
   return true;
 }
 
@@ -229,7 +223,7 @@ bool ConvertToRFC2253(const RDNSequence &rdn_sequence, std::string *out) {
     std::string rdn_string;
     for (const auto &atv : rdn) {
       if (!rdn_string.empty()) {
-        rdn_string += '+';
+        rdn_string += "+";
       }
       std::string atv_string;
       if (!atv.AsRFC2253String(&atv_string)) {
@@ -238,7 +232,7 @@ bool ConvertToRFC2253(const RDNSequence &rdn_sequence, std::string *out) {
       rdn_string += atv_string;
     }
     if (!rdns_string.empty()) {
-      rdns_string += ',';
+      rdns_string += ",";
     }
     rdns_string += rdn_string;
   }

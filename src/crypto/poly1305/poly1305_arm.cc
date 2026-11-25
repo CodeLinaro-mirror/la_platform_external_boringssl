@@ -18,12 +18,10 @@
 #include <openssl/poly1305.h>
 
 #include <assert.h>
-#include <string.h>  // IWYU pragma: keep
+#include <string.h>
 
-// IWYU pragma: begin_keep
 #include "../internal.h"
 #include "internal.h"
-// IWYU pragma: end_keep
 
 
 BSSL_NAMESPACE_BEGIN
@@ -33,9 +31,7 @@ BSSL_NAMESPACE_BEGIN
 #define addmulmod openssl_poly1305_neon2_addmulmod
 #define blocks openssl_poly1305_neon2_blocks
 
-namespace {
-
-void freeze(fe1305x2 *r) {
+static void freeze(fe1305x2 *r) {
   int i;
 
   uint32_t x0 = r->v[0];
@@ -100,7 +96,7 @@ void freeze(fe1305x2 *r) {
   r->v[8] = y4;
 }
 
-void fe1305x2_tobytearray(uint8_t r[16], fe1305x2 *x) {
+static void fe1305x2_tobytearray(uint8_t r[16], fe1305x2 *x) {
   uint32_t x0 = x->v[0];
   uint32_t x1 = x->v[2];
   uint32_t x2 = x->v[4];
@@ -122,7 +118,7 @@ void fe1305x2_tobytearray(uint8_t r[16], fe1305x2 *x) {
   CRYPTO_store_u32_le(r + 12, (x3 >> 18) + (x4 << 8));
 }
 
-void fe1305x2_frombytearray(fe1305x2 *r, const uint8_t *x, size_t xlen) {
+static void fe1305x2_frombytearray(fe1305x2 *r, const uint8_t *x, size_t xlen) {
   size_t i;
   uint8_t t[17];
 
@@ -174,11 +170,9 @@ static_assert(
     sizeof(struct poly1305_state_st) + 63 <= sizeof(poly1305_state),
     "poly1305_state isn't large enough to hold aligned poly1305_state_st.");
 
-poly1305_state_st *poly1305_aligned_state(poly1305_state *state) {
+static poly1305_state_st *poly1305_aligned_state(poly1305_state *state) {
   return reinterpret_cast<poly1305_state_st *>(align_pointer(state, 64));
 }
-
-}  // namespace
 
 void CRYPTO_poly1305_init_neon(poly1305_state *state, const uint8_t key[32]) {
   poly1305_state_st *st = poly1305_aligned_state(state);

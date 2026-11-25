@@ -74,19 +74,16 @@ IMPLEMENT_ASN1_FUNCTIONS_const(GENERAL_NAMES)
 
 IMPLEMENT_ASN1_DUP_FUNCTION_const(GENERAL_NAME)
 
-namespace {
-
-int edipartyname_cmp(const EDIPARTYNAME *a, const EDIPARTYNAME *b) {
-  // nameAssigner is optional and may be NULL. An absent nameAssigner sorts
-  // before a present one.
-  if (a->nameAssigner == nullptr || b->nameAssigner == nullptr) {
-    if (a->nameAssigner != b->nameAssigner) {
-      return a->nameAssigner == nullptr ? -1 : 1;
+static int edipartyname_cmp(const EDIPARTYNAME *a, const EDIPARTYNAME *b) {
+  // nameAssigner is optional and may be NULL.
+  if (a->nameAssigner == nullptr) {
+    if (b->nameAssigner != nullptr) {
+      return -1;
     }
   } else {
-    int ret = ASN1_STRING_cmp(a->nameAssigner, b->nameAssigner);
-    if (ret != 0) {
-      return ret;
+    if (b->nameAssigner == nullptr ||
+        ASN1_STRING_cmp(a->nameAssigner, b->nameAssigner) != 0) {
+      return -1;
     }
   }
 
@@ -94,21 +91,26 @@ int edipartyname_cmp(const EDIPARTYNAME *a, const EDIPARTYNAME *b) {
   return ASN1_STRING_cmp(a->partyName, b->partyName);
 }
 
-// a and b are guaranteed to be non-NULL.
-int othername_cmp(const OTHERNAME *a, const OTHERNAME *b) {
-  // Check their type first.
-  int ret = OBJ_cmp(a->type_id, b->type_id);
-  if (ret != 0) {
-    return ret;
+// Returns 0 if they are equal, != 0 otherwise.
+static int othername_cmp(const OTHERNAME *a, const OTHERNAME *b) {
+  int result = -1;
+
+  if (!a || !b) {
+    return -1;
   }
-  return ASN1_TYPE_cmp(a->value, b->value);
+  // Check their type first.
+  if ((result = OBJ_cmp(a->type_id, b->type_id)) != 0) {
+    return result;
+  }
+  // Check the value.
+  result = ASN1_TYPE_cmp(a->value, b->value);
+  return result;
 }
 
-}  // namespace
-
+// Returns 0 if they are equal, != 0 otherwise.
 int bssl::GENERAL_NAME_cmp(const GENERAL_NAME *a, const GENERAL_NAME *b) {
-  if (a->type != b->type) {
-    return a->type < b->type ? -1 : 1;
+  if (!a || !b || a->type != b->type) {
+    return -1;
   }
 
   switch (a->type) {
@@ -136,8 +138,7 @@ int bssl::GENERAL_NAME_cmp(const GENERAL_NAME *a, const GENERAL_NAME *b) {
       return OBJ_cmp(a->d.rid, b->d.rid);
   }
 
-  // Unreachable: `type` is always one of the CHOICE arms above.
-  abort();
+  return -1;
 }
 
 void GENERAL_NAME_set0_value(GENERAL_NAME *a, int type, void *value) {
