@@ -56,9 +56,7 @@ using namespace bssl;
 
 #if defined(OPENSSL_FORK_DETECTION_WIPEONFORK)
 
-namespace {
-
-bool wipeonfork(void *addr, size_t page_size) {
+static bool wipeonfork(void *addr, size_t page_size) {
 #if defined(OPENSSL_LINUX)
   // Linux flavor, >=4.14.
   // Some versions of qemu (up to at least 5.0.0-rc4, see linux-user/syscall.c)
@@ -77,14 +75,14 @@ bool wipeonfork(void *addr, size_t page_size) {
 #endif
 }
 
-int g_force_madv_wipeonfork;
-int g_force_madv_wipeonfork_enabled;
-CRYPTO_once_t g_fork_detect_once = CRYPTO_ONCE_INIT;
-StaticMutex g_fork_detect_lock;
-Atomic<uint32_t> *g_fork_detect_addr;
-uint64_t g_fork_generation;
+static int g_force_madv_wipeonfork;
+static int g_force_madv_wipeonfork_enabled;
+static CRYPTO_once_t g_fork_detect_once = CRYPTO_ONCE_INIT;
+static StaticMutex g_fork_detect_lock;
+static Atomic<uint32_t> *g_fork_detect_addr;
+static uint64_t g_fork_generation;
 
-void init_fork_detect() {
+static void init_fork_detect() {
   if (g_force_madv_wipeonfork) {
     return;
   }
@@ -108,8 +106,6 @@ void init_fork_detect() {
   g_fork_detect_addr = new (addr) Atomic<uint32_t>(1);
   g_fork_generation = 1;
 }
-
-}  // namespace
 
 uint64_t bssl::CRYPTO_get_fork_generation() {
   CRYPTO_once(&g_fork_detect_once, init_fork_detect);
@@ -182,12 +178,10 @@ void bssl::CRYPTO_fork_detect_force_madv_wipeonfork_for_testing(int on) {
 
 #elif defined(OPENSSL_FORK_DETECTION_PTHREAD_ATFORK)
 
-namespace {
+static CRYPTO_once_t g_pthread_fork_detection_once = CRYPTO_ONCE_INIT;
+static uint64_t g_atfork_fork_generation;
 
-CRYPTO_once_t g_pthread_fork_detection_once = CRYPTO_ONCE_INIT;
-uint64_t g_atfork_fork_generation;
-
-void we_are_forked() {
+static void we_are_forked() {
   // Immediately after a fork, the process must be single-threaded.
   uint64_t value = g_atfork_fork_generation + 1;
   if (value == 0) {
@@ -196,14 +190,12 @@ void we_are_forked() {
   g_atfork_fork_generation = value;
 }
 
-void init_pthread_fork_detection() {
+static void init_pthread_fork_detection() {
   if (pthread_atfork(nullptr, nullptr, we_are_forked) != 0) {
     abort();
   }
   g_atfork_fork_generation = 1;
 }
-
-}  // namespace
 
 uint64_t bssl::CRYPTO_get_fork_generation() {
   CRYPTO_once(&g_pthread_fork_detection_once, init_pthread_fork_detection);

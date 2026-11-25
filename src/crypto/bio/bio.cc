@@ -15,6 +15,7 @@
 #include <openssl/bio.h>
 
 #include <assert.h>
+#include <errno.h>
 #include <limits.h>
 #include <string.h>
 
@@ -46,8 +47,6 @@ BIO *BIO_new(const BIO_METHOD *method) {
   }
 
   if (method->create != nullptr && !method->create(ret.get())) {
-    // Matching OpenSSL, don't call `destroy` if `create` fails.
-    ret->method = nullptr;
     return nullptr;
   }
 
@@ -56,8 +55,7 @@ BIO *BIO_new(const BIO_METHOD *method) {
 
 Bio::~Bio() {
   BIO *next = BIO_pop(this);
-  // `method` may be null if `create` failed.
-  if (method != nullptr && method->destroy != nullptr) {
+  if (method->destroy != nullptr) {
     method->destroy(this);
   }
   CRYPTO_free_ex_data(&g_ex_data_class, &ex_data);
