@@ -2523,26 +2523,6 @@ class MtcCosignersPathBuilderDelegate : public CertPathBuilderDelegateBase {
   std::map<std::vector<uint8_t>, MTCCosigner> cosigners_;
 };
 
-// A delegate that overrides the deprecated
-// `IsCosignatureVerificationResultAcceptable` instead of
-// `IsMTCCosignatureVerificationResultAcceptable`.
-class DeprecatedMtcCosignersPathBuilderDelegate
-    : public CertPathBuilderDelegateBase {
- public:
-  void CheckPathAfterVerification(const CertPathBuilder& path_builder,
-                                  CertPathBuilderResultPath* path) override {}
-
-  std::optional<MTCCosigner> GetMTCCosigner(
-      Span<const uint8_t> cosigner_id) override {
-    return std::nullopt;
-  }
-
-  MOCK_METHOD(bool, IsCosignatureVerificationResultAcceptable,
-              (const MTCAnchor* mtc_anchor,
-               std::vector<std::vector<uint8_t>> valid_additional_cosigners),
-              (override));
-};
-
 // Matches a `const MTCAnchor*` for the MTC CA certificate `expected_cert`.
 MATCHER_P(IsMTCAnchorFor, expected_cert, "") {
   return arg != nullptr && arg->AsCert().get() == expected_cert;
@@ -2697,6 +2677,14 @@ TEST_F(PathBuilderMTCTest, Verification) {
       RunPathBuilder(signatureless_leaf, &trust_store_with_subtrees, nullptr,
                      &mtc_cosigner_not_called_delegate);
   EXPECT_TRUE(result.HasValidPath());
+  // The result path exposes the MTC CA certificate through GetTrustedCert().
+  {
+    const CertPathBuilderResultPath* path = result.GetBestValidPath();
+    ASSERT_TRUE(path);
+    EXPECT_EQ(path->GetTrustedCert(), mtc_anchor_->AsCert().get());
+    EXPECT_EQ(path->last_cert_trust.trusted_subtrees,
+              mtc_anchor_->CertTrust().trusted_subtrees);
+  }
   result =
       RunPathBuilder(signatureless_leaf, &trust_store_with_subtrees_wrong_key,
                      nullptr, &mtc_cosigner_not_called_delegate);
@@ -2967,28 +2955,6 @@ TEST_F(PathBuilderMTCTest, CosignatureVerification) {
   }
 }
 
-// Tests that a delegate that overrides the deprecated
-// `IsCosignatureVerificationResultAcceptable` is still called.
-TEST_F(PathBuilderMTCTest, DeprecatedCosignatureVerificationResultAcceptable) {
-  TrustStoreInMemory trust_store;
-  ASSERT_TRUE(trust_store.AddMTCTrustAnchor(mtc_anchor_no_subtrees_));
-  std::shared_ptr<const ParsedCertificate> standalone_leaf;
-  ASSERT_TRUE(ReadMTCTestCert("mtc-leaf-standalone.pem", &standalone_leaf));
-
-  for (bool acceptable : {true, false}) {
-    SCOPED_TRACE(acceptable);
-    StrictMock<DeprecatedMtcCosignersPathBuilderDelegate> delegate;
-    EXPECT_CALL(delegate,
-                IsCosignatureVerificationResultAcceptable(
-                    IsMTCAnchorFor(mtc_anchor_no_subtrees_->AsCert().get()),
-                    ElementsAre()))
-        .WillOnce(Return(acceptable));
-    CertPathBuilder::Result result =
-        RunPathBuilder(standalone_leaf, &trust_store, nullptr, &delegate);
-    EXPECT_EQ(result.HasValidPath(), acceptable);
-  }
-}
-
 TEST_F(PathBuilderMTCTest, CheckPathAfterVerification) {
   // Set up MTC leaf and its trust anchor.
   std::shared_ptr<const ParsedCertificate> mtc_leaf;
@@ -3097,6 +3063,52 @@ TEST_F(PathBuilderMTCTest, UnsupportedCaSignatureAlgorithm) {
   ASSERT_TRUE(leaf_errors) << path.errors.ToDebugString(path.certs);
   EXPECT_TRUE(leaf_errors->ContainsError(cert_errors::kVerifySignedDataFailed))
       << path.errors.ToDebugString(path.certs);
+}
+
+TEST_F(PathBuilderMTCTest, EntryExtensions) {
+  std::shared_ptr<const ParsedCertificate> ca_cert =
+      ReadCryptoX509MTCTestCert("ca_cert.pem");
+  ASSERT_TRUE(ca_cert);
+  std::optional<MTCAnchor> anchor =
+      MTCAnchor::Create(ca_cert, CertificateTrust::ForTrustAnchor());
+  ASSERT_TRUE(anchor);
+  TrustStoreInMemory in_memory;
+  ASSERT_TRUE(in_memory.AddMTCTrustAnchor(
+      std::make_shared<MTCAnchor>(*std::move(anchor))));
+
+  // Well-formed extensions of unrecognized types are ignored.
+  {
+    std::shared_ptr<const ParsedCertificate> leaf =
+        ReadCryptoX509MTCTestCert("cert_34_0.pem");
+    ASSERT_TRUE(leaf);
+    MtcCosignersPathBuilderDelegate delegate;
+    EXPECT_CALL(delegate, IsMTCCosignatureVerificationResultAcceptable(
+                              Ref(*ca_cert), ElementsAre()))
+        .WillOnce(Return(true));
+    CertPathBuilder::Result result =
+        RunPathBuilder(leaf, &in_memory, nullptr, &delegate);
+    EXPECT_TRUE(result.HasValidPath());
+  }
+
+  for (const char *file_name : {"cert_35_0.pem" /* truncated extensions */,
+                                "cert_36_0.pem" /* duplicate extensions */,
+                                "cert_37_0.pem" /* misordered extensions */}) {
+    SCOPED_TRACE(file_name);
+    std::shared_ptr<const ParsedCertificate> leaf =
+        ReadCryptoX509MTCTestCert(file_name);
+    ASSERT_TRUE(leaf);
+    StrictMock<MtcCosignersPathBuilderDelegate> delegate;
+    CertPathBuilder::Result result =
+        RunPathBuilder(leaf, &in_memory, nullptr, &delegate);
+    EXPECT_FALSE(result.HasValidPath());
+    const auto &path = *result.GetBestPathPossiblyInvalid();
+    ASSERT_EQ(2u, path.certs.size());
+    EXPECT_EQ(leaf, path.certs[0]);
+    EXPECT_EQ(ca_cert, path.certs[1]);
+    EXPECT_TRUE(path.errors.GetErrorsForCert(0)->ContainsError(
+        cert_errors::kVerifySignedDataFailed))
+        << path.errors.ToDebugString(path.certs);
+  }
 }
 
 TEST(PathBuilderPrioritizationTest, DatePrioritization) {
